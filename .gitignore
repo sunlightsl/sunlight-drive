@@ -1,0 +1,41 @@
+# ---- 依赖 ----
+node_modules/
+
+# ---- 配置与密钥 ----
+# .env 保存访问口令、2FA 密钥、对象存储 AccessKey。
+.env
+.env.local
+*.pem
+*.key
+
+# ---- 运行时数据 ----
+# drive.json 是文件树与账号；secrets.json 是加密后的凭证；.master.key 是解密用的密钥。
+# 这三样属于实例数据，不属于源码。
+data/
+
+# ---- 本地调试产物 ----
+tmp/
+*.log
+
+# ---- 界面测试截图 ----
+# 由 test/qa-*.js 生成，可随时重建，不参与版本管理。
+test/screenshots/
+
+# ---- 设计文档 ----
+# 架构与部署细节由 PROJECT-BOOK.md 承载，其余草稿不进版本库。
+ARCHITECTURE.md
+DEPLOY-CLOUD.md
+docs/
+
+# ---- 编辑器与系统 ----
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
+*.code-workspace
+
+# ---- 打包产物 ----
+*.tgz
+*.tar.gz

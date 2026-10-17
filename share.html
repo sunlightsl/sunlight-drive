@@ -1,0 +1,1880 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta name="robots" content="noindex, nofollow">
+<title>文件分享</title>
+<style>
+  :root{
+    --bg:#ffffff; --bg-elev:#fafafa; --bg-hover:#f4f4f5;
+    --border:#e6e6e8; --border-strong:#d4d4d8;
+    --text:#18181b; --text-dim:#6b7280; --text-faint:#9ca3af;
+    --accent:#5e6ad2; --accent-hover:#4f5ac0; --accent-soft:rgba(94,106,210,.08);
+    /* 品牌渐变的两端。值取自主站 index.html，两处必须一致 ——
+       分享页是客户第一眼看到的页面，品牌色在这里和主站不同会很怪 */
+    --brand-a:#4f46e5; --brand-b:#7c3aed;
+    --green:#1a9c62; --amber:#b7791f; --red:#dc2626;
+    /* 下面这几个原来**只在主站有**，分享页没定义。
+       平时看不出问题，但谁照主站的写法用一次（比如 .mini.danger 用 --red-soft）
+       颜色就会静默失效 —— 补上，值逐一对齐主站。 */
+    --green-soft:rgba(26,156,98,.08);
+    --amber-soft:rgba(183,121,31,.08);
+    --red-soft:rgba(220,38,38,.07);
+    --bg-sunken:#f7f7f8;
+    --sel-bg:rgba(94,106,210,.055);
+    --shadow-sm:0 6px 20px rgba(0,0,0,.09);
+    --item-hover:rgba(0,0,0,.016);
+    --glow:rgba(94,106,210,.10);
+    --shadow:0 24px 64px rgba(0,0,0,.13);
+    /* 这个页面用到了 var(--scrim) 却一直没定义它 —— 弹层的背景于是是透明的。 */
+    --scrim:rgba(24,24,27,.42);
+    /* 预览灯箱单独一套：比 --scrim 实，图片/视频才不会和页面糊在一起 */
+    --pv-scrim:rgba(24,24,27,.72);
+    --radius:10px; --radius-sm:6px;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  }
+  html[data-theme="dark"]{
+    --bg:#08090a; --bg-elev:#0f1011; --bg-hover:#141516;
+    --border:#1f2023; --border-strong:#2b2d31;
+    --text:#f7f8f8; --text-dim:#8a8f98; --text-faint:#62666d;
+    --accent:#5e6ad2; --accent-hover:#6e79dd; --accent-soft:rgba(94,106,210,.12);
+    /* 暗色下的品牌渐变要提亮，否则在深底上读不清（同主站） */
+    --brand-a:#818cf8; --brand-b:#c4b5fd;
+    --green:#4cb782; --amber:#d4a548; --red:#e5534b;
+    /* 同亮色：这几个原来缺失，值对齐主站 */
+    --green-soft:rgba(76,183,130,.12);
+    --amber-soft:rgba(212,165,72,.12);
+    --red-soft:rgba(229,83,75,.1);
+    --bg-sunken:#0c0d0e;
+    --sel-bg:rgba(94,106,210,.1);
+    --shadow-sm:0 6px 20px rgba(0,0,0,.5);
+    --item-hover:rgba(255,255,255,.014);
+    --glow:rgba(94,106,210,.14);
+    --shadow:0 24px 64px rgba(0,0,0,.6);
+    --scrim:rgba(0,0,0,.7);
+    /* 暗色下页面本身就是深的，遮罩要比页面更暗才拉得开层次 */
+    --pv-scrim:rgba(0,0,0,.82);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-font-smoothing:antialiased}
+  body{
+    background:var(--bg);color:var(--text);font-family:var(--sans);
+    font-size:14px;line-height:1.6;min-height:100vh;position:relative;
+  }
+  body::before{
+    content:"";position:fixed;top:-240px;left:50%;
+    width:1000px;height:520px;transform:translateX(-50%);
+    background:radial-gradient(ellipse at center,var(--glow),transparent 65%);
+    pointer-events:none;z-index:0;
+  }
+  .wrap{max-width:1000px;margin:0 auto;padding:0 24px;position:relative;z-index:1}
+  /* 水印的定位参照是 .browse（整块内容区），**不是 .wrap**。
+     挂在 .wrap 上的话它会跟着内容高度走 —— 根屏和进目录后的内容行数不同，
+     水印就会跟着跳一下，看着像"闪了一下"。挂在外层就稳了。 */
+  .browse{position:relative}
+
+  /* 主题开关现在是品牌条里的一个按钮，不再是绝对定位的浮层。
+     早先它固定落在页面右上角（top:22px），而品牌条高度 52px 且 z-index 更高，
+     正好把它盖住 —— 表现就是「切换主题」被裁掉一半。放进条里就不会再打架。 */
+  .theme-btn{
+    width:32px;height:32px;flex:none;
+    display:flex;align-items:center;justify-content:center;
+    background:transparent;border:1px solid var(--border);
+    border-radius:var(--radius-sm);color:var(--text-dim);cursor:pointer;
+    transition:all .15s;
+  }
+  .theme-btn:hover{color:var(--text);border-color:var(--border-strong);background:var(--bg-hover)}
+  .theme-btn svg{width:15px;height:15px}
+  .theme-btn .i-sun{display:none}
+  html[data-theme="dark"] .theme-btn .i-sun{display:block}
+  html[data-theme="dark"] .theme-btn .i-moon{display:none}
+
+  /* ---------- 居中卡片（密码 / 错误 / 加载） ---------- */
+  .center{
+    min-height:100vh;display:flex;align-items:center;justify-content:center;
+    padding:24px;position:relative;z-index:2;
+  }
+  .card{
+    width:100%;max-width:400px;background:var(--bg-elev);
+    border:1px solid var(--border);border-radius:14px;
+    padding:36px 30px 30px;text-align:center;box-shadow:var(--shadow);
+  }
+  .card-ico{
+    width:46px;height:46px;margin:0 auto 20px;
+    display:flex;align-items:center;justify-content:center;
+    background:var(--accent-soft);border-radius:12px;color:var(--accent);
+  }
+  .card-ico.bad{background:rgba(229,83,75,.1);color:var(--red)}
+  .card-ico svg{width:21px;height:21px}
+  .card h2{font-size:19px;font-weight:600;letter-spacing:-.015em;margin-bottom:8px}
+  .card p{color:var(--text-dim);font-size:13.5px;margin-bottom:24px;line-height:1.55}
+  .card input{
+    width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);
+    font-family:var(--sans);font-size:15px;padding:11px 13px;
+    border-radius:var(--radius-sm);outline:none;text-align:center;
+    letter-spacing:.22em;text-transform:uppercase;
+    transition:border-color .15s,box-shadow .15s;
+  }
+  .card input::placeholder{letter-spacing:0;text-transform:none;color:var(--text-faint)}
+  .card input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .card .btn{
+    width:100%;margin-top:12px;display:flex;align-items:center;justify-content:center;
+    gap:7px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);
+    padding:11px;font-size:14px;font-weight:500;cursor:pointer;font-family:var(--sans);
+    transition:background .15s;
+  }
+  .card .btn:hover{background:var(--accent-hover)}
+  .card .btn:disabled{background:var(--bg-hover);color:var(--text-faint);cursor:default}
+  .err{margin-top:12px;font-size:12.5px;color:var(--red);display:none;line-height:1.5}
+  .err.on{display:block}
+  .spin{
+    width:14px;height:14px;border:1.5px solid rgba(255,255,255,.35);
+    border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite;
+  }
+  @keyframes sp{to{transform:rotate(360deg)}}
+  /* 顶部品牌条。结构与尺寸**对齐主站的 .topbar** ——
+     高度 58、内容居中在 1000px 里、sticky 而不是 fixed。
+     早先是 52px + fixed + 内边距写死，和主站在视觉上差一档；
+     两个页面来回跳的时候能看出来。 */
+  .topbar{
+    position:sticky;top:0;z-index:40;
+    background:var(--bg);   /* 老浏览器回退 */
+    background:color-mix(in srgb, var(--bg) 86%, transparent);
+    backdrop-filter:saturate(180%) blur(14px);
+    -webkit-backdrop-filter:saturate(180%) blur(14px);
+    border-bottom:1px solid var(--border);
+  }
+  .topbar-in{
+    max-width:1000px;margin:0 auto;padding:0 24px;height:58px;
+    display:flex;align-items:center;gap:12px;
+  }
+  /* 品牌是可点的（回主页），所以它是个 <a>。
+     <a> 自带下划线和链接色 —— 显式压掉，否则品牌名会变成一条带下划线的蓝字。 */
+  .topbar .brand{
+    display:flex;align-items:center;gap:9px;
+    color:var(--text);
+    text-decoration:none;
+    cursor:pointer;
+  }
+  .topbar .brand:hover{color:var(--text)}
+  .topbar .brand svg{width:21px;height:21px;color:var(--brand-a, #5b8def);flex:none}
+  /* 品牌字：和主站 .brand span 用**同一套**渐变（渐变裁进字形，不加描边投影）。
+     两个页面的品牌必须长得一样 —— 分享页是客户第一眼看到的东西，
+     品牌在这里和主站不一致，会让人怀疑是不是进了别的站。 */
+  .topbar .brand span{
+    font-size:14.5px;font-weight:600;letter-spacing:-.01em;white-space:nowrap;
+    text-decoration:none;
+    background-image:linear-gradient(92deg,var(--brand-a) 6%,var(--brand-b) 94%);
+    -webkit-background-clip:text;background-clip:text;
+    -webkit-text-fill-color:transparent;color:transparent;
+  }
+
+  /* ---------- 转存入口（在标题行右侧） ----------
+     靠右的推力放在**主题按钮**上，不是转存按钮上。
+     转存按钮会随"能不能转存"显隐，如果 auto 挂在它身上，
+     它一消失主题按钮就会从右边缘滑到左边 —— 看起来像页面错位。 */
+  .topbar .theme-btn{margin-left:auto}
+
+  /* 标题 + 转存按钮同一行。按钮竖直居中于标题，
+     不额外撑高 header —— 也就不再把下面的内容往下推。 */
+  .title-line{
+    display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  }
+  .title-line h1{flex:1;min-width:0}
+  .savebar{flex:none;display:flex;align-items:center}
+
+  /* 圆角和主题按钮保持一致（都是 --radius-sm=6px）。
+     做成 999px 的胶囊，和同一屏里其它按钮明显不是一个系统。 */
+  .savebar .mb{
+    display:inline-flex;align-items:center;gap:6px;
+    font-family:var(--sans);font-size:12.5px;font-weight:500;
+    padding:7px 12px;border-radius:var(--radius-sm);cursor:pointer;
+    border:1px solid var(--border);background:transparent;color:var(--text-dim);
+    transition:all .15s;white-space:nowrap;
+  }
+  .savebar .mb:hover{color:var(--text);border-color:var(--border-strong);background:var(--bg-hover)}
+  .savebar .mb.primary{background:var(--accent);border-color:transparent;color:#fff}
+  .savebar .mb.primary:hover{filter:brightness(1.06);background:var(--accent);color:#fff}
+  .savebar .mb svg{width:14px;height:14px}
+  .savebar .mb:disabled{opacity:.55;cursor:not-allowed}
+  /* 已经存过一次之后：按钮留着（客户可能还要存到别的目录），
+     但降成次要样式，不再抢注意力 */
+  .savebar .mb.done{background:transparent;border-color:var(--border);color:var(--text-dim)}
+
+  @media (max-width:600px){
+    .topbar{height:46px;padding:0 14px}
+    .topbar .brand{font-size:13px}
+    .topbar .brand svg{width:17px;height:17px}
+    /* 窄屏也让标题和转存按钮**同一行**。
+       原来把按钮压成整行通栏，在手机上占掉一大块，
+       而且"分享内容"才四个字，根本不需要独占一行。
+       标题更长的分享（比如一个长文件名）会自己截断，按钮始终在右边。
+
+       按钮文字不隐藏 —— 三个状态的文案都能认出来
+       （登录后转存 / 保存到我的网盘 / 再存一份），
+       只靠一个图标反而要多想一下。省空间靠收字号和内边距。 */
+    .title-line{gap:10px}
+    .title-line h1{font-size:17px}
+    .savebar{width:auto;flex:none}
+    .savebar .mb{width:auto;padding:6px 10px;font-size:12px;white-space:nowrap}
+  }
+  .brand-mark{
+    font-family:var(--mono);font-size:11px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--text-faint);
+  }
+
+  /* 分享人那一行：头像 + 昵称 */
+  /* 分享人：并进「有效期」那一行，所以不再是独立的一段。
+     原来它是 `display:flex` 的整段、带上边距和分隔线 ——
+     在「标题 / 有效期 / 分享人 / 面包屑」之间挤出两条横线，页面看着很碎。
+     现在它只是那一行里的一个内联项，整页只剩一条线。 */
+  .sharer{display:inline-flex;align-items:center;gap:7px}
+  .sharer .av{
+    /* 22px：和这一行 12.5px 的字相称。
+       我一度压到 18px，配上圆角在截图里看着像颗小豆子 —— 太小了。
+       主站头像 32px 是顶栏那种大按钮上的尺寸，这里不是。 */
+    width:22px;height:22px;border-radius:50%;flex:none;
+    object-fit:cover;
+    /* 这里原来引用的那个变量（surface）**两个页面都没有定义**，
+       所以它是无效值、背景一直是透明的。头像本来就是方图裁成圆形，
+       不需要底色；真有透明 PNG 时给个中性底即可。
+       注：注释里刻意不写出那个 var() 写法 —— 否则以后任何
+       基于 grep 的"未定义变量"检查都会被这行注释误报。 */
+    background:var(--bg-elev);
+    border:1px solid var(--border);
+  }
+  /* 无头像时用首字母顶一下。尺寸跟 .av 保持一致（18px）——
+     两者差一档的话，有头像和没头像的两个人看起来会不一样高。
+     字号相应收小，否则首字母在 18px 圆里会顶出来。 */
+  .sharer .av-fb{
+    width:22px;height:22px;border-radius:50%;flex:none;
+    display:flex;align-items:center;justify-content:center;
+    background:var(--brand-a);color:#fff;
+    font-size:11px;font-weight:600;
+  }
+  /* 这一行整体是等宽字体（--mono），分享人是人名，换回无衬线更好读 */
+  .sharer .who{font-family:var(--sans);font-size:12.5px;color:var(--text-dim)}
+  .sharer .who b{color:var(--text);font-weight:600}
+
+  /* ---------- 选目录 ---------- */
+  .pick-mask{
+    position:fixed;inset:0;z-index:150;background:var(--scrim);
+    display:none;align-items:center;justify-content:center;padding:24px;
+  }
+  .pick-mask.on{display:flex}
+  .pick{
+    background:var(--bg);border:1px solid var(--border-strong);border-radius:12px;
+    width:100%;max-width:420px;max-height:min(560px,86vh);
+    display:flex;flex-direction:column;box-shadow:var(--shadow);
+  }
+  .pick-h{padding:17px 18px 13px;border-bottom:1px solid var(--border)}
+  .pick-h h3{font-size:15px;font-weight:600;margin:0 0 5px}
+  .pick-h p{margin:0;font-size:12px;color:var(--text-dim);line-height:1.5}
+  .pick-list{flex:1;overflow-y:auto;padding:7px;min-height:150px}
+  .pick-row{
+    display:flex;align-items:center;gap:8px;width:100%;
+    padding:9px 11px;border:none;background:transparent;cursor:pointer;
+    border-radius:var(--radius-sm);color:var(--text-dim);
+    font-size:13px;font-family:var(--sans);text-align:left;
+  }
+  .pick-row:hover{background:var(--bg-hover);color:var(--text)}
+  .pick-row svg{width:15px;height:15px;flex:none;opacity:.75}
+  .pick-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pick-row.cur{color:var(--accent);font-weight:600}
+  /* 行尾的小标记：「默认」/「将创建」。
+     不参与点击（pointer-events:none），免得点标记被当成点了别的行 */
+  .pick-tag{
+    flex:none;margin-left:auto;font-style:normal;font-size:10.5px;font-weight:500;
+    padding:1px 6px;border-radius:4px;pointer-events:none;
+    background:var(--bg-hover);color:var(--text-faint);
+  }
+  .pick-row.cur .pick-tag{background:color-mix(in srgb, var(--accent) 16%, transparent);color:var(--accent)}
+  .pick-f{padding:13px 18px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:9px}
+  .pick-f button{
+    padding:9px 16px;border-radius:var(--radius-sm);cursor:pointer;
+    font-size:13px;font-family:var(--sans);
+    background:transparent;border:1px solid var(--border);color:var(--text-dim);
+  }
+  .pick-f button.go{background:var(--accent);border-color:transparent;color:#fff;font-weight:500}
+  .pick-f button.go:hover{filter:brightness(1.06)}
+
+  @media (max-width:600px){
+    .savebar{gap:9px}
+    .savebar .save-btn{width:100%;justify-content:center}
+  }
+
+  /* ---------- 浏览态 ---------- */
+  /* 顶栏为 sticky，内容不需要手动让出 52px。
+     内边距与主站 .wrap 的节奏对齐：上 24、下 72。 */
+  .browse{display:none;padding:24px 0 72px}
+  .browse.on{display:block}
+  /* 标题块的收尾取 14px：用 26px 时叠加面包屑 20px、工具栏 18px、
+     列表 18px，从顶栏到第一条内容累计 82px，页面上半部分全是留白。
+     主站没有"标题块"这一层，14px 能让节奏接近主站。
+
+     左右 14px 是为了**和列表对齐**：行的内边距是 `0 14px`，
+     标题块原来贴齐内容区左缘（0），于是标题比下面的文件名靠左 14px。
+     面包屑和工具栏不吃这个缩进（主站也是 0），所以只有标题块加。 */
+  .browse header{padding:0 14px 14px;border-bottom:1px solid var(--border)}
+  /* 标题字号也跟着收一档：24px 在 1000px 宽的页面里显得很重，
+     而且分享页的标题往往就是一个文件名或文件夹名，不需要喊那么大声。 */
+  .browse h1{font-size:20px;font-weight:600;letter-spacing:-.02em;line-height:1.3;word-break:break-all}
+  .meta-line{
+    display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+    margin-top:12px;font-size:12.5px;color:var(--text-faint);
+    font-family:var(--mono);
+  }
+  .pill{
+    display:inline-flex;align-items:center;gap:6px;
+    border:1px solid var(--border);border-radius:100px;
+    padding:3px 10px;font-family:var(--sans);font-size:12px;color:var(--text-dim);
+  }
+  .pill svg{width:12px;height:12px}
+  .pill.warn{color:var(--amber);border-color:rgba(212,165,72,.35)}
+
+  /* 面包屑上方的留白。主站由 .crumbbar 给 24px；分享页收到 16px ——
+     因为分享页上面还有一块标题（主站没有），这里再留 24 就顶得太开。 */
+  .crumbs{display:flex;align-items:center;gap:7px;padding:16px 0 0;font-size:13.5px;flex-wrap:wrap}
+  .crumbs a{color:var(--text-dim);cursor:pointer;transition:color .15s}
+  .crumbs a:hover{color:var(--text)}
+  .crumbs .cur{color:var(--text);font-weight:500}
+  .crumbs .sep{color:var(--text-faint);font-size:12px}
+
+  /* ---------- 水印 ----------
+     斜排、稀疏、很淡，铺在内容区背景上。三个约束：
+       ① pointer-events:none —— 绝不能挡住点击
+       ② 只在内容区（.browse 内），不动顶栏
+       ③ 深浅主题用不同颜色，否则深底上会糊成一片白
+
+     **不使用 mix-blend-mode。** 该属性会把所在层叠上下文中的全部内容
+     当作混合背景，包括位于其上层的按钮与文字：返回按钮、搜索框边框、
+     列表行都会被掺入斜纹，越靠左上越明显。
+
+     以下方式均不能规避（逐项实测）：
+       · 调低水印 z-index —— 内容与它同处一个层叠上下文，仍被混合
+       · 外层加 `isolation:isolate` —— 隔离的是与父级背景的混合，不含内容
+       · 给内容加 `transform` 建立独立层叠上下文 —— 仍属同一混合上下文
+       · 水印改 `z-index:-1` —— 滑到 .browse 背景之后，整条水印消失
+
+     因此只使用透明度：视觉上接近正片叠底，但仅叠加自身图层。 */
+  .wm{
+    position:absolute;inset:0;z-index:0;
+    pointer-events:none;user-select:none;
+    background-repeat:repeat;
+    opacity:.5;
+  }
+  html[data-theme="dark"] .wm{opacity:.35}
+  /* .wrap 的定位在文件开头那条规则里已经声明过（顶部那份是完整的），
+     这里不再重复写一遍 —— 同一个选择器两条顶层规则很容易改漏一边。 */
+
+  /* 文件列表：和主站的 .panel 同一套观感 ——
+     外面一圈边框 + 圆角，行与行之间用底边线分隔。
+     早先只有一条 border-top、四周没有包围，内容看着是"浮"在页面上的。
+     overflow:hidden 是为了让行的悬停底色不越过圆角。 */
+  .list{
+    margin-top:14px;
+    border:1px solid var(--border);border-radius:var(--radius);
+    overflow:hidden;background:var(--bg);
+  }
+
+  /* 列定义抽成一个变量，表头和行都引用它 ——
+     两处各写一遍的话，改列宽时必然会漏掉一边，然后表头和内容错位。
+
+     最后一列必须是**定值**，不能用 auto 也不能用 max-content：
+     两者都让列宽跟着内容走，于是"有预览按钮的行"比"只有下载按钮的行"
+     宽 65px（实测 124 vs 59），整张表左右抖，
+     表头的「大小 / 操作」和下面的数值、按钮全都对不齐。
+     128px 是量出来的：预览+下载两个按钮 = 119px，留一点余量。
+
+     大小列 84 → 72：72px 装得下「25.4 MB」，收窄之后数值离按钮更近。 */
+  .list,.row,.lhead{--cols:20px minmax(0,1fr) 72px 128px}
+
+  /* 表头：和主站 .lhead 同一套观感（下沉底色 + 底边线 + 小号灰字）。
+     分享页不支持排序，所以这里只是静态文字，不做成 .sortable。 */
+  .lhead{
+    display:grid;grid-template-columns:var(--cols);
+    align-items:center;gap:12px;padding:9px 14px;
+    background:var(--bg-sunken);border-bottom:1px solid var(--border);
+    font-size:11.5px;color:var(--text-faint);font-weight:500;
+  }
+  .lhead .r{text-align:right}
+
+  /* ---------- 工具栏 ----------
+     控件与顺序对齐主站（返回 · 视图 · 搜索），尺寸也一样 ——
+     两个页面来回跳的时候不该看出是两套东西。 */
+  .toolbar{display:flex;align-items:center;gap:10px;padding:12px 0 10px;flex-wrap:wrap}
+  .icon-btn{
+    width:34px;height:34px;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+    background:var(--bg-elev);border:1px solid var(--border);border-radius:var(--radius-sm);
+    color:var(--text-dim);cursor:pointer;transition:all .15s;
+  }
+  .icon-btn:hover:not(:disabled){color:var(--text);border-color:var(--border-strong);background:var(--bg-hover)}
+  /* 禁用态只降透明度、不用更浅的颜色 —— 再叠加一层水印底色就几乎看不见了
+     （手机上返回按钮曾因此变成一个几乎空白的方块）。 */
+  .icon-btn:disabled{opacity:.55;cursor:default}
+  .icon-btn svg{width:16px;height:16px}
+  .search{position:relative;flex:1;min-width:180px}
+  .search svg{
+    position:absolute;left:11px;top:50%;transform:translateY(-50%);
+    width:15px;height:15px;color:var(--text-faint);pointer-events:none;
+  }
+  .search input{
+    width:100%;background:var(--bg-elev);border:1px solid var(--border);color:var(--text);
+    font-family:var(--sans);font-size:13.5px;padding:9px 12px 9px 33px;
+    border-radius:var(--radius-sm);outline:none;
+    transition:border-color .15s,background .15s;
+  }
+  .search input:focus{border-color:var(--accent);background:var(--bg)}
+  .search input::placeholder{color:var(--text-faint)}
+
+  /* 行：列定义走 --cols，和表头共用一份。
+     行高**定死 46px，和主站一致** —— 早先用 padding:12px 撑，
+     实际算出来 52px（按钮 28 + 上下 24），比主站高一截，
+     两边的列表放在一起看就是分享页"松"一点。
+     46px 装得下 .mini（28px），所以不需要靠 padding 撑高度。 */
+  .row{
+    display:grid;grid-template-columns:var(--cols);
+    align-items:center;gap:12px;padding:0 14px;height:46px;
+    border-bottom:1px solid var(--border);
+    transition:background .1s;
+  }
+  /* 最后一行不画底线，否则会和外框的下边凑成两条 */
+  .row:last-child{border-bottom:none}
+
+  /* ---------- 网格视图 ----------
+     卡片结构对齐主站 .card-t（图标 / 名称 / 底部信息），
+     底部那行放「预览 / 下载」两个按钮 —— 主站那里是「⋯」菜单，
+     但分享页只有这两个动作，直接摆出来比收进菜单少一次点击。
+
+     外框和列表用同一套（.list 那种），卡片本身不再画边框 ——
+     卡片各有边框的话，和容器边框凑在一起就是"每个格子套两层框"，
+     很吵。间隔靠 gap，悬停时再给底色。 */
+  .grid{
+    margin-top:14px;
+    display:grid;grid-template-columns:repeat(auto-fill,minmax(176px,1fr));
+    gap:10px;padding:14px;
+    border:1px solid var(--border);border-radius:var(--radius);
+    background:var(--bg);
+  }
+  .card-t{
+    position:relative;border:1px solid transparent;border-radius:var(--radius);
+    background:var(--bg-elev);padding:14px;transition:all .15s;
+    display:flex;flex-direction:column;gap:10px;min-height:128px;
+  }
+  .card-t:hover{border-color:var(--border);background:var(--bg-hover)}
+  .card-t.dir{cursor:pointer}
+  .card-t .cico{color:var(--text-faint);display:flex}
+  .card-t .cico.folder{color:var(--accent)}
+  .card-t .cico svg{width:22px;height:22px;display:block}
+  .card-t .cname{
+    font-size:13.5px;line-height:1.45;word-break:break-all;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+  }
+  .card-t .cmeta{margin-top:auto;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .card-t .csize{font-family:var(--mono);font-size:11.5px;color:var(--text-faint);margin-right:auto}
+  .row .fact{gap:6px}
+  /* 文件名可点 = 打开预览。用光标提示，不加下划线（列表里下划线太吵） */
+  .row .fname.can-pv{cursor:pointer}
+  .row .fname.can-pv:hover{color:var(--accent)}
+  .row.folder{cursor:pointer}
+  .row.folder:hover{background:var(--item-hover)}
+  .fico{color:var(--text-faint);display:flex}
+  .fico.folder{color:var(--accent)}
+  .fico svg{width:18px;height:18px;display:block}
+  .fname{font-size:13.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .row.folder .fname{font-weight:500}
+  .fsize,.fdate{font-family:var(--mono);font-size:11.5px;color:var(--text-faint);text-align:right}
+  .fact{display:flex;justify-content:flex-end}
+  /* 行内小按钮。尺寸与配色**对齐主站的 .mini** ——
+     两处差 1px 内边距、底色一个 transparent 一个 var(--bg)，
+     在两个页面之间来回切时能看出来。 */
+  .mini{
+    font-family:var(--sans);font-size:11.5px;color:var(--text-dim);
+    background:var(--bg);border:1px solid var(--border);border-radius:4px;
+    padding:4px 9px;cursor:pointer;transition:all .15s;
+    display:inline-flex;align-items:center;gap:4px;
+  }
+  .mini:hover:not(:disabled){color:var(--text);border-color:var(--border-strong);background:var(--bg-hover)}
+  .mini:disabled{opacity:.4;cursor:default}
+  .mini svg{width:12px;height:12px}
+  /* 下载是这一行里的主行动，用实心；预览是次要的，保持描边。
+     关键是**尺寸完全一致** —— 尺寸差一点并排就像两个不同系统的控件。 */
+  .mini.primary{background:var(--accent);border-color:transparent;color:#fff}
+  .mini.primary:hover:not(:disabled){filter:brightness(1.06);background:var(--accent);color:#fff}
+  .mini.primary:disabled{opacity:.55}
+  /* 进行中的状态。放在 .primary 之后，好覆盖它的白色字 ——
+     主行动是蓝底，把字调成"浅灰"会看不清；用半透明白。 */
+  .mini.loading{cursor:wait;opacity:.7}
+  .mini.primary.loading{color:rgba(255,255,255,.75)}
+  .mini:not(.primary).loading{color:var(--text-faint)}
+
+  .single{
+    margin-top:22px;display:flex;align-items:center;gap:14px;
+    border:1px solid var(--border);border-radius:var(--radius);
+    background:var(--bg-elev);padding:18px;
+  }
+  .single .fico svg{width:26px;height:26px}
+  .single .smeta{flex:1;min-width:0}
+  .single .sname{font-size:14px;font-weight:500;word-break:break-all}
+  .single .ssize{font-family:var(--mono);font-size:11.5px;color:var(--text-faint);margin-top:2px}
+  .btn{
+    display:inline-flex;align-items:center;gap:7px;background:var(--accent);color:#fff;
+    border:none;border-radius:var(--radius-sm);padding:9px 16px;
+    font-size:13px;font-weight:500;cursor:pointer;font-family:var(--sans);
+    transition:all .15s;white-space:nowrap;
+  }
+  .btn:hover{background:var(--accent-hover)}
+  .btn:disabled{background:var(--bg-hover);color:var(--text-faint);cursor:wait}
+  .btn svg{width:14px;height:14px}
+
+  /* 空状态：也放进同样外框的容器里 ——
+     否则"有内容"和"没内容"两种状态下页面的外形不一样，切换时会跳一下。 */
+  .empty{
+    padding:56px 0;text-align:center;color:var(--text-faint);font-size:13.5px;
+    border:1px solid var(--border);border-radius:var(--radius);
+    margin-top:14px;background:var(--bg);
+  }
+  .toast{
+    position:fixed;bottom:26px;left:50%;transform:translate(-50%,80px);
+    background:var(--bg-elev);border:1px solid var(--border-strong);color:var(--text);
+    font-size:13px;padding:10px 18px;border-radius:100px;box-shadow:var(--shadow);
+    opacity:0;transition:all .25s;z-index:200;pointer-events:none;max-width:90vw;text-align:center;
+  }
+  .toast.on{opacity:1;transform:translate(-50%,0)}
+  @media (max-width:600px){
+    /* 主题开关已经跟着品牌条布局走，不再需要单独定位 */
+    .theme-btn{width:30px;height:30px}
+
+    /* 窄屏的列定义也走**同一个变量** —— 表头和行自动一起变，
+       不会出现"改了行忘了表头"的错位。
+       这里把「大小」整列去掉（手机上一行放不下四列），
+       去掉的规则对表头和行**同时**生效，列数才对得上。 */
+    .list,.row,.lhead{--cols:20px minmax(0,1fr) 128px}
+    .list .fsize,.list .lhead-size{display:none}
+
+    /* 行高在窄屏保持 46px（窄屏上按钮不缩小，装得下） */
+    .lhead{padding:8px 14px}
+    /* 网格在窄屏收窄卡片宽度，一屏两列；容器内边距也收紧 */
+    .grid{grid-template-columns:repeat(auto-fill,minmax(134px,1fr));gap:8px;padding:10px}
+    .card-t{min-height:112px;padding:12px}
+    /* 工具栏：搜索占满剩余宽度，别和两个按钮挤在一行放不下 */
+    .toolbar{gap:8px;padding:14px 0 12px}
+    .search{min-width:0}
+    /* 顶栏是 sticky，窄屏也不用再让出固定高度 */
+    .browse{padding:18px 0 60px}
+    .topbar-in{padding:0 16px;height:52px}
+  }
+  /* ---------- 预览弹层（.pv-*）----------
+     主站和分享页用的是同一套类名与结构。改动请两边一起改。 */
+  .pv{position:fixed;inset:0;z-index:200;background:var(--pv-scrim);
+      display:flex;flex-direction:column}
+  .pv[hidden]{display:none}
+  html.pv-lock{overflow:hidden}
+
+  .pv-h{flex:none;display:flex;align-items:center;gap:9px;
+        padding:11px 13px;background:var(--bg);border-bottom:1px solid var(--border)}
+  .pv-name{flex:1;min-width:0;font-size:13.5px;font-weight:600;color:var(--text);
+           overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pv-nav{flex:none;display:flex;align-items:center;gap:3px}
+  .pv-count{font-size:12px;color:var(--text-dim);min-width:44px;text-align:center;
+            font-variant-numeric:tabular-nums}
+  .pv-acts{flex:none;display:flex;align-items:center;gap:3px}
+
+  .pv-nav button,.pv-act{display:inline-flex;align-items:center;justify-content:center;
+      width:34px;height:34px;border-radius:var(--radius-sm);
+      border:1px solid transparent;background:transparent;color:var(--text-dim);
+      cursor:pointer;transition:background .15s,color .15s}
+  .pv-nav button:hover:not(:disabled),.pv-act:hover{background:var(--bg-hover);color:var(--text)}
+  .pv-nav button:disabled{opacity:.3;cursor:default}
+  .pv-nav button svg,.pv-act svg{width:17px;height:17px}
+
+  .pv-b{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;
+        padding:16px;overflow:auto}
+  /* 图片：contain 保证整图可见（不裁切、不放大失真）。点背景关闭 */
+  .pv-b img.pv-media{max-width:100%;max-height:100%;object-fit:contain;
+        border-radius:var(--radius-sm);cursor:default}
+  .pv-b video.pv-media{max-width:100%;max-height:100%;border-radius:var(--radius-sm);
+        background:#000;outline:none}
+  .pv-b audio.pv-media{width:min(560px,100%)}
+  /* PDF：给足高度，浏览器自带阅读器在 iframe 里才展得开 */
+  .pv-b iframe.pv-media{width:100%;height:100%;min-height:420px;border:none;
+        border-radius:var(--radius-sm);background:#fff}
+  .pv-msg{font-size:13px;color:#fff;opacity:.8;text-align:center;line-height:1.7;
+          padding:30px 20px;max-width:420px}
+
+  @media (max-width:600px){
+    .pv-h{padding:9px 10px;gap:5px}
+    .pv-name{font-size:12.5px}
+    .pv-count{min-width:38px;font-size:11.5px}
+    .pv-nav button,.pv-act{width:32px;height:32px}
+    /* 手机上把"新窗口打开"收起来：PDF 之外用不到，省出横向空间 */
+    .pv-b{padding:8px}
+    .pv-b iframe.pv-media{min-height:60vh}
+  }
+
+</style>
+</head>
+<body>
+
+<!-- 品牌条：标志在左（可点回主站），主题开关在右 -->
+<div class="topbar">
+  <div class="topbar-in">
+    <!-- 品牌可点 = 回主站。没登录时主站自己会显示登录门 ——
+         这里不用判断登录态，跳过去就行。
+         放在顶栏是因为"回主页"属于全局导航，和"这个分享里有什么"是两回事。 -->
+    <a class="brand" id="homeLink" href="/" title="回到我的云盘">
+      <!-- 多云：太阳被云挡住的部分不画，露出的弧线 + 上方放射线（和主站同一个标志） -->
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="M20 12h2"/><path d="m19.07 4.93-1.41 1.41"/><path d="M15.947 12.65a4 4 0 0 0-5.925-4.128"/><path d="M13 22H7a5 5 0 1 1 4.9-6H13a3 3 0 0 1 0 6Z"/></svg>
+      <span id="brandTop">Sunlight&#8201;云盘</span>
+    </a>
+    <button class="theme-btn" id="themeBtn" title="切换主题" aria-label="切换主题">
+      <svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      <svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2M12 20v2M4.2 4.2l1.5 1.5M18.3 18.3l1.5 1.5M2 12h2M20 12h2M4.2 19.8l1.5-1.5M18.3 5.7l1.5-1.5"/></svg>
+    </button>
+  </div>
+</div>
+<!-- 密码 / 错误 / 加载 -->
+<div class="center" id="gate">
+  <div class="card">
+    <div class="card-ico" id="gateIco">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+    </div>
+    <h2 id="gateTitle">正在打开分享</h2>
+    <p id="gateDesc">稍等</p>
+    <div id="gateForm" style="display:none">
+      <input type="text" id="pw" placeholder="请输入访问密码" autocomplete="off" spellcheck="false" maxlength="12">
+      <button class="btn" id="go"><span class="lbl">打开</span></button>
+    </div>
+    <div class="err" id="err"></div>
+  </div>
+</div>
+
+<!-- 浏览 -->
+<div class="browse" id="browse">
+  <!-- 水印：斜排、稀疏、很淡。挂在 .browse 上（不是 .wrap）——
+       这样它的高度跟着**整块内容区**走，不会因为根屏/目录内容行数不同而跳动。
+       不挡操作（pointer-events:none）。通过密码之后才由 JS 填内容并显示。 -->
+  <div class="wm" id="wm" aria-hidden="true"></div>
+  <div class="wrap">
+    <header>
+      <!-- 标题与转存按钮同一行：按钮挂在文件名右侧，
+           高度不额外增加，也不会像放在顶栏那样和品牌名挤在一起。
+           窄屏上自动换行到下一行（见 CSS）。 -->
+      <div class="title-line">
+        <h1 id="title">—</h1>
+        <!-- 转存入口。内容由 JS 填：
+             未登录 = 「登录后转存」，已登录 = 「保存到我的网盘」，
+             已保存过也留着 —— 客户可能还想再存一份到别的目录。 -->
+        <div class="savebar" id="savebar" style="display:none"></div>
+      </div>
+      <div class="meta-line">
+        <!-- 分享人在前、有效期在后。
+             分享人一定有（只要过了密码就会下发），有效期不一定有 ——
+             永久分享就没有期限。把不确定的那个放后面，
+             这一行的开头就不会因为"这次有没有期限"而忽左忽右。 -->
+        <span class="sharer" id="sharer" style="display:none"></span>
+        <span class="pill" id="ttlPill"></span>
+      </div>
+    </header>
+    <nav class="crumbs" id="crumbs" style="display:none"></nav>
+    <!-- 工具栏：返回上一级 / 切换视图 / 搜索。
+         和主站同一套控件与顺序（返回 · 视图 · 搜索）——
+         分享页没有「新建文件夹」，接收方不该能改别人的东西。 -->
+    <div class="toolbar" id="toolbar">
+      <button class="icon-btn" id="btnBack" title="返回上一级" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+      </button>
+      <button class="icon-btn" id="btnView" title="切换视图">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+      </button>
+      <div class="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <input type="text" id="q" placeholder="在这个文件夹里搜索…" autocomplete="off">
+      </div>
+    </div>
+    <div id="content"></div>
+  </div>
+</div>
+
+<!-- 选目录：转存去哪里 -->
+<div class="pick-mask" id="pickMask">
+  <div class="pick">
+    <div class="pick-h">
+      <h3>保存到哪里</h3>
+      <p id="pickHint"></p>
+    </div>
+    <div class="pick-list" id="pickList"></div>
+    <div class="pick-f">
+      <button id="pickCancel">取消</button>
+      <button class="go" id="pickOk">保存到这里</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+
+/* ================================================================
+   公开分享页
+   ----------------------------------------------------------------
+   地址：/s/<token>
+   拿链接不等于拿到东西 —— 必须再输 6 位临时密码换一张 stoken，
+   之后所有列表和下载请求都带着这张 stoken，服务端再逐次校验目标
+   节点确实在这个分享的子树里。
+
+   页面本身不判断权限，判断全在服务端。这里只负责把 token 带上、
+   把错误如实显示出来。
+   ================================================================ */
+
+const TOKEN = decodeURIComponent(location.pathname.replace(/^\/s\//, '').replace(/\/+$/, ''));
+
+/* 品牌名里中西文交界处塞一个细空格（U+2009），和主站同一套处理 */
+const brandSpaced = s => String(s)
+  .replace(/([A-Za-z0-9])([\u4e00-\u9fff])/g, '$1\u2009$2')
+  .replace(/([\u4e00-\u9fff])([A-Za-z0-9])/g, '$1\u2009$2');
+
+/** 顶部品牌条。登录闸门和浏览态都要显示，所以单独一个函数 */
+function applyBrand(name) {
+  $('brandTop').textContent = brandSpaced(name || 'sunlight');
+}
+
+/**
+ * 「由 XXX 分享」。
+ *
+ * 服务端只给昵称和头像，不给登录用户名 —— username 是登录凭据的一半，
+ * 分享链接会被转发，印在页面上等于给爆破的人省一步。头像太大时服务端
+ * 也会省略，所以这里要有退路（首字母圆形占位）。
+ */
+function renderSharer(sh) {
+  const box = $('sharer');
+  /* 分享人名字留着给水印用 —— 水印要写"谁分享的"，
+     而 renderSharer 只在服务端给了昵称时才有内容，所以在这里记一份。 */
+  ST.sharerName = (sh && sh.nickname) ? String(sh.nickname) : '';
+  if (!sh || !sh.nickname) { box.style.display = 'none'; return; }
+  const name = String(sh.nickname);
+  const initial = [...name][0] || '?';
+  const av = sh.avatar
+    ? `<img class="av" src="${esc(sh.avatar)}" alt="">`
+    : `<span class="av-fb">${esc(initial)}</span>`;
+  box.innerHTML = `${av}<span class="who">由 <b>${esc(name)}</b> 分享</span>`;
+  box.style.display = 'flex';
+}
+
+const ICON_FILE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8"/><path d="M15 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>';
+const ICON_FOLDER = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h3.6l2 2H19a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
+const ICON_DL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M5 21h14"/></svg>';
+const ICON_CLOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
+const ICON_BAD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>';
+const ICON_EYE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+const fmtSize = b => {
+  b = Number(b) || 0;
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+  if (b < 1073741824) return (b / 1048576).toFixed(1) + ' MB';
+  return (b / 1073741824).toFixed(2) + ' GB';
+};
+
+/* 按扩展名给个像样的图标颜色，比清一色的灰色方块好认 */
+const ST = { root: null, parent: null, stoken: '', expireAt: 0, busy: new Set(), loading: false, sharerName: '', view: 'list', q: '' };
+
+/* 当前这一屏的原始数据（服务端那次 list 的返回）。
+   由 renderChildren 每次渲染时更新 —— 因为所有"换一屏"的路径
+   （进目录 / 返回 / 切视图 / 下载后重画）最后都会走 renderChildren，
+   挂在那里就不会漏。声明放在这里（而不是渲染函数附近），
+   免得依赖"调用发生在声明之后"这种容易被后续改动打破的顺序。 */
+let lastData = null;
+
+/* 分享者设的限制。默认全开 —— 没通过验证之前先按"全开"渲染，
+   真正进到内容里时会被服务端下发的值覆盖。
+   读的时候一律走 PERM.dl 这种形式，别在模板里散落判断。 */
+const PERM = { pv: true, dl: true, sv: true, wm: true };
+
+/** 把服务端下发的 perm 并进 PERM。字段缺失一律当"允许" */
+function applyPerm(p) {
+  PERM.pv = !(p && p.pv === false);
+  PERM.dl = !(p && p.dl === false);
+  PERM.sv = !(p && p.sv === false);
+  PERM.wm = !(p && p.wm === false);
+}
+
+let toastTimer;
+function toast(msg) {
+  const el = $('toast');
+  el.textContent = msg;
+  el.classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('on'), 2600);
+}
+
+/* ---------- 请求 ---------- */
+async function req(path, opts = {}) {
+  const headers = Object.assign({ 'Accept': 'application/json' }, opts.headers || {});
+  if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
+  const resp = await fetch(path, Object.assign({}, opts, { headers, cache: 'no-store' }));
+  let data = null;
+  try { data = await resp.json(); } catch (_) {}
+  if (!resp.ok || !data || data.ok === false) {
+    const e = new Error((data && data.error) || ('请求失败（' + resp.status + '）'));
+    e.status = resp.status;
+    throw e;
+  }
+  return data;
+}
+
+/* ---------- 界面切换 ---------- */
+function showGate(title, desc, withForm) {
+  $('gate').style.display = 'flex';
+  $('browse').classList.remove('on');
+  $('gateTitle').textContent = title;
+  $('gateDesc').textContent = desc;
+  $('gateForm').style.display = withForm ? 'block' : 'none';
+  $('gateIco').className = 'card-ico' + (withForm ? '' : ' bad');
+  if (!withForm) $('gateIco').innerHTML = ICON_BAD;
+  else $('gateIco').innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+}
+
+function showBrowse() {
+  $('gate').style.display = 'none';
+  $('browse').classList.add('on');
+}
+
+function gateErr(msg) {
+  $('err').textContent = msg;
+  $('err').classList.add('on');
+}
+
+/* ---------- 剩余时间 ---------- */
+let ttlTimer;
+function renderTtl() {
+  const el = $('ttlPill');
+  if (!el) return;
+  /* 永久分享：expireAt 为 null，不倒计时 */
+  if (ST.expireAt === null || ST.expireAt === undefined) {
+    el.className = 'pill';
+    el.innerHTML = ICON_CLOCK + '<span>永久有效</span>';
+    clearInterval(ttlTimer);
+    return;
+  }
+  const left = ST.expireAt - Date.now();
+  if (left <= 0) {
+    el.className = 'pill warn';
+    el.innerHTML = ICON_CLOCK + '<span>分享已过期</span>';
+    clearInterval(ttlTimer);
+    showGate('分享已过期', '这个链接的有效期已经结束，请向分享者索要新的链接。', false);
+    return;
+  }
+  const h = Math.floor(left / 3600000);
+  const m = Math.floor(left % 3600000 / 60000);
+  const s = Math.floor(left % 60000 / 1000);
+  const txt = h ? `${h} 小时 ${m} 分后过期` : (m ? `${m} 分 ${s} 秒后过期` : `${s} 秒后过期`);
+  el.className = 'pill' + (left < 10 * 60000 ? ' warn' : '');
+  el.innerHTML = ICON_CLOCK + '<span>' + esc(txt) + '</span>';
+}
+
+/* ---------- 列表 / 网格渲染 ---------- */
+
+/** 一个节点的两个动作按钮（预览 / 下载）。列表和网格共用这一份 ——
+    两处各写一遍的话，权限规则迟早只在一边生效。 */
+function actionsHTML(n) {
+  const canPv = !!n.pv && PERM.pv;
+  const canDl = PERM.dl;
+  const busy = ST.busy.has(n.id);
+  const pv = canPv ? `<button class="mini" data-pv="${esc(n.id)}">${ICON_EYE}预览</button>` : '';
+  const dl = canDl
+    ? `<button class="mini primary${busy ? ' loading' : ''}" data-dl="${esc(n.id)}" ${busy ? 'disabled' : ''}>
+         ${busy ? '准备中' : ICON_DL + '下载'}</button>`
+    : `<button class="mini" disabled title="分享者不允许下载">${ICON_DL}下载</button>`;
+  return pv + dl;
+}
+
+function rowHTML(n) {
+  /* 第一列是**类型图标**（文件夹 / 文件），第二列才是名字。
+     这里一度是个空的 <span></span> —— 那是我加表头时留下的占位，
+     结果图标整列都没了：ICON_FOLDER / ICON_FILE 声明了却没人用。
+     表头第一列也是空的，两边对得上。 */
+  if (n.type === 'folder') {
+    return `<div class="row folder" data-enter="${esc(n.id)}">
+      <span class="fico folder">${ICON_FOLDER}</span>
+      <span class="fname" title="${esc(n.name)}">${esc(n.name)}</span>
+      <span class="fsize">—</span>
+      <span class="fact"><span class="mini" style="pointer-events:none">打开</span></span>
+    </div>`;
+  }
+  const canPv = !!n.pv && PERM.pv;
+  return `<div class="row" data-id="${esc(n.id)}">
+      <span class="fico">${ICON_FILE}</span>
+      <span class="fname${canPv ? ' can-pv' : ''}" title="${esc(n.name)}"${canPv ? ` data-pv="${esc(n.id)}"` : ''}>${esc(n.name)}</span>
+      <span class="fsize">${fmtSize(n.size)}</span>
+      <span class="fact">${actionsHTML(n)}</span>
+    </div>`;
+}
+
+/** 网格卡片。结构对齐主站 .card-t（图标 / 名称 / 底部一行），
+    底部放「预览 / 下载」—— 主站那里是「⋯」菜单，
+    但分享页只有这两个动作，直接摆出来少一次点击。 */
+function cardHTML(n) {
+  if (n.type === 'folder') {
+    return `<div class="card-t dir" data-enter="${esc(n.id)}" title="${esc(n.name)}">
+      <span class="cico folder">${ICON_FOLDER}</span>
+      <span class="cname">${esc(n.name)}</span>
+      <span class="cmeta"><span class="csize">文件夹</span>
+        <span class="mini" style="pointer-events:none">打开</span></span>
+    </div>`;
+  }
+  const canPv = !!n.pv && PERM.pv;
+  return `<div class="card-t" data-id="${esc(n.id)}" title="${esc(n.name)}">
+      <span class="cico">${ICON_FILE}</span>
+      <span class="cname${canPv ? ' can-pv' : ''}"${canPv ? ` data-pv="${esc(n.id)}"` : ''}>${esc(n.name)}</span>
+      <span class="cmeta"><span class="csize">${fmtSize(n.size)}</span>${actionsHTML(n)}</span>
+    </div>`;
+}
+
+/** 当前这一屏要显示的东西（搜索时是过滤后的结果） */
+function visibleNodes() {
+  const all = (lastData && lastData.children) || [];
+  const kw = (ST.q || '').trim().toLowerCase();
+  if (!kw) return all;
+  return all.filter(n => n.name.toLowerCase().includes(kw));
+}
+
+function renderCrumbs(crumbs, current) {
+  const el = $('crumbs');
+  /* 只显示分享子树内的层级：外层路径不该给陌生人看。
+     接口给的是「祖先链（不含当前目录）+ current」，所以这里要把分享根自己摘掉，
+     否则进子目录时会变成「升级包 / 升级包」。 */
+  const inScope = (crumbs || []).filter(c => c.id !== ST.root.id);
+
+  /* 面包屑**一直显示**，根屏也显示，第一项就是这次分享的名字。
+     早先在根屏把它整个藏掉，于是"进目录"那一下会凭空多出一条 ——
+     内容跟着往下跳一格，看着很别扭。现在它从第一屏就在，
+     只是根屏时后面没有别的层级而已。 */
+  /* 第一项是这次分享本身。
+     它**必须可点** —— 进了子目录之后，点它就是回上一层（多项分享时
+     服务端会把 parent='' 认成虚拟根那一屏）。
+     只有"当前就在分享根"时才退化成纯文本，避免一个点了没反应的链接。
+     早先我把它写成死的 <span>，结果进目录之后**回不去了**。 */
+  const atRoot = !current || current.id === ST.root.id;
+  const parts = [
+    atRoot
+      ? `<span class="cur">${esc(ST.root.name)}</span>`
+      : `<a data-crumb="${esc(ST.root.id)}">${esc(ST.root.name)}</a>`
+  ];
+  for (const c of inScope) {
+    parts.push('<span class="sep">/</span>');
+    parts.push(`<a data-crumb="${esc(c.id)}">${esc(c.name)}</a>`);
+  }
+  /* 当前目录不是分享根时才追加（根屏时 ST.root.name 已经在上面了） */
+  if (current && current.id !== ST.root.id) {
+    parts.push('<span class="sep">/</span>');
+    parts.push(`<span class="cur">${esc(current.name)}</span>`);
+  }
+  el.style.display = 'flex';
+  el.innerHTML = parts.join('');
+}
+
+function renderChildren(data) {
+  /* 必须在这里更新 lastData：它是这一屏的数据源，
+     visibleNodes() / renderCurrent() / syncBackBtn() 都读它。
+     早先只在 loadList()（首屏）里赋值，于是**进目录后没更新** ——
+     面包屑变了，但列表拿旧数据按新目录 id 过滤，一个都匹配不上，
+     页面显示「没有匹配的文件」。表现就是"文件夹点不开"。
+
+     放在这个函数的开头，所有换屏路径（进目录 / 返回 / 切视图）都会经过，
+     不会再漏。 */
+  lastData = data;
+
+  ST.parent = data.parent;
+  renderTtl();
+  /* 面包屑换了一层，返回按钮的可用状态跟着变。 */
+  syncBackBtn();
+
+  // 分享的根是个文件 —— 没有列表，直接给一张下载卡
+  if (data.current && data.current.type === 'file') {
+    /* 单个文件没有层级也没有列表，工具栏（返回/视图/搜索）在这里全无意义，收起来 */
+    $('toolbar').style.display = 'none';
+    $('title').textContent = data.current.name;
+    $('crumbs').style.display = 'none';
+    const busy = ST.busy.has(data.current.id);
+    const c = data.current;
+    /* 单个文件的分享：能预览就给两个动作，预览放前面（先看，再决定要不要存）。
+       分享者关掉哪一项，对应按钮就置灰并说明原因 —— 不直接消失，
+       否则对方会以为页面坏了，而不是"分享者不让"。 */
+    const cCanPv = !!c.pv && PERM.pv;
+    $('content').innerHTML = `<div class="single">
+      <span class="fico">${ICON_FILE}</span>
+      <span class="smeta">
+        <span class="sname">${esc(c.name)}</span>
+        <span class="ssize">${fmtSize(c.size)}</span>
+      </span>
+      ${cCanPv
+        ? `<button class="mini" data-pv="${esc(c.id)}">${ICON_EYE}预览</button>`
+        : (PERM.pv ? '' : `<button class="mini" disabled title="分享者不允许在线预览">${ICON_EYE}预览</button>`)}
+      ${PERM.dl
+        ? `<button class="mini primary" data-dl="${esc(c.id)}" ${busy ? 'disabled' : ''}>
+             ${busy ? '<span class="spin"></span>准备中' : ICON_DL + '下载'}</button>`
+        : `<button class="mini" disabled title="分享者不允许下载">${ICON_DL}下载</button>`}
+    </div>`;
+    return;
+  }
+
+  $('title').textContent = ST.root.name;
+  renderCrumbs(data.breadcrumb, data.current);
+  $('toolbar').style.display = 'flex';   // 文件夹视图下工具栏要在（单文件时被收起来过）
+  syncBackBtn();
+
+  if (!data.children.length) {
+    $('content').innerHTML = '<div class="empty">这个文件夹是空的</div>';
+    return;
+  }
+  /* 表头和行共用 --cols 的列定义，所以列宽不会对不上。
+     分享页不支持排序，所以表头只是静态文字（主站那版是 .sortable）。 */
+  const head = `<div class="lhead">
+      <span></span>
+      <span>名称</span>
+      <span class="r lhead-size">大小</span>
+      <span class="r">操作</span>
+    </div>`;
+
+  const list = visibleNodes();
+  /* 搜索没命中时给一句明确的话 —— 空列表配上搜索框，人会以为是页面坏了 */
+  if (!list.length) {
+    $('content').innerHTML = '<div class="empty">没有匹配「' + esc(ST.q || '') + '」的文件</div>';
+    return;
+  }
+
+  $('content').innerHTML = ST.view === 'grid'
+    ? '<div class="grid">' + list.map(cardHTML).join('') + '</div>'
+    : '<div class="list">' + head + list.map(rowHTML).join('') + '</div>';
+}
+
+/* ---------- 动作 ---------- */
+async function openFolder(id) {
+  /* 换目录时清掉搜索框。不清的话上一层的关键词会套用到新目录上，
+     对方会看到一个空列表，还以为这个文件夹是空的。 */
+  ST.q = '';
+  const qEl = $('q');
+  if (qEl) qEl.value = '';
+
+  const q = new URLSearchParams({ parent: id, stoken: ST.stoken });
+  const data = await req(`/api/share/${encodeURIComponent(TOKEN)}/list?${q}`);
+  renderChildren(data);
+}
+
+async function download(id) {
+  if (ST.busy.has(id)) return;
+  ST.busy.add(id);
+  renderCurrent();
+
+  try {
+    const q = new URLSearchParams({ id, stoken: ST.stoken });
+    const data = await req(`/api/share/${encodeURIComponent(TOKEN)}/download?${q}`);
+    const a = document.createElement('a');
+    a.href = data.url;
+    a.download = data.fileName || '';
+    a.rel = 'noopener';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    toast('已开始下载 ' + (data.fileName || ''));
+  } catch (e) {
+    toast('下载失败：' + e.message);
+  } finally {
+    ST.busy.delete(id);
+    renderCurrent();
+  }
+}
+
+/* 重画当前这一屏（不重新请求）。下载/预览的状态变化靠它，
+   切视图、搜索也走它 —— 数据来源统一是 lastData。 */
+function renderCurrent() { if (lastData) renderChildren(lastData); }
+
+/* ---------- 在线预览 ----------
+   预览与下载是两个独立动作：
+     · 点文件名 / 「预览」→ 打开弹层看
+     · 「下载」→ 拿原文件
+   左边切换只在**当前这一屏能预览的文件**之间走，不会跳到别的目录去。 */
+function openPreview(id) {
+  if (!lastData) return;
+  const nodes = (lastData.children && lastData.children.length)
+    ? lastData.children
+    : (lastData.current ? [lastData.current] : []);
+  const ok = window.PV.open(nodes, id, {
+    getUrl: async (nid) => req(`/api/share/${encodeURIComponent(TOKEN)}/preview?id=${encodeURIComponent(nid)}&stoken=${encodeURIComponent(ST.stoken)}`),
+    download: (nid) => download(nid)
+  });
+  if (!ok) toast('这个文件不支持在线预览，请直接下载');
+}
+
+/* ================================================================
+   保存到我的网盘
+   ----------------------------------------------------------------
+   服务端在 OSS 内复制对象，字节不过浏览器 —— 所以这里是"秒级"的。
+
+   三件事决定按钮长什么样（都由服务端 /save-info 说了算）：
+     · 未登录      → 灰态引导登录（这也是开放注册的入口）
+     · 已登录可转  → 正常按钮 + 会占多少空间
+     · 登了但不能转 → 说明原因（例如绑了自己的存储、或文件超过复制上限）
+   ================================================================ */
+
+let saveInfo = null;          // 服务端给的可用性
+let savedInfo = null;         // 这次已经存到哪了（存过之后按钮文案会变）
+let pickedParent = null;      // 用户在选目录里挑的（null = 默认「来自分享」）
+let myFolders = null;         // 我的文件夹列表，第一次打开选择器时拉
+
+const ICON_SAVE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M5 21h14"/></svg>';
+
+/** 登录态探测 + 转存可用性。失败一律降级成"不显示"，不打扰看内容的人 */
+async function initSave() {
+  const box = $('savebar');
+  try {
+    const info = await req(`/api/share/${encodeURIComponent(TOKEN)}/save-info?stoken=${encodeURIComponent(ST.stoken)}`);
+    saveInfo = info;
+  } catch (e) {
+    /* 401 = 没登录；其它（分享过期、无存储、绑了自己的桶）也都不显示按钮，
+       因为这些用户点了也存不了，不如少一个点不通的按钮。 */
+    if (e.status === 401) return renderSaveLogin(box);
+    box.style.display = 'none';
+    return;
+  }
+  renderSaveReady(box);
+}
+
+function renderSaveLogin(box) {
+  box.style.display = 'flex';
+  box.innerHTML = `<button class="mb" id="saveGo" title="登录后可以把这个分享直接存进你的网盘">
+      ${ICON_SAVE}<span class="lbl">登录后转存</span></button>`;
+  $('saveGo').addEventListener('click', () => {
+    /* next 要把 pathname + search + **hash** 一起带上。
+       少带 hash 会把 #p=<分享密码> 丢掉 —— 那是分享者发的"带密码链接"，
+       回来之后密码就没了，得让用户重新问一遍（实测就是这个现象）。
+       服务端只接受站内相对路径（见 index.html 的 safeNext），
+       所以这里直接拼当前地址是安全的；hash 不参与服务端校验也不发给服务端。 */
+    const back = location.pathname + location.search + location.hash;
+    location.href = '/?next=' + encodeURIComponent(back);
+  });
+}
+
+function renderSaveReady(box) {
+  const f = saveInfo.files;
+  const size = fmtSize(saveInfo.bytes);
+  box.style.display = 'flex';
+
+  if (!saveInfo.canSave) {
+    /* 存不了就把原因挂在 title 上，别塞一长句把标题挤走 */
+    box.innerHTML = `<button class="mb" disabled title="${esc(saveInfo.reason || '暂时无法转存')}">
+        ${ICON_SAVE}无法转存</button>`;
+    return;
+  }
+
+  /* 按钮**一直留着**，存完也不隐藏 —— 客户可能还想再存一份到别的目录，
+     或者换了台设备想再存一次。存过之后降成次要样式，不再抢注意力。 */
+  const done = savedInfo ? ' done' : ' primary';
+  const label = savedInfo ? '再存一份' : '保存到我的网盘';
+  const tip = savedInfo
+    ? `上次存入「${savedInfo.where}」· ${savedInfo.count} 个文件`
+    : `共 ${f} 个文件 · ${size}，将占用你的空间`;
+
+  box.innerHTML = `<button class="mb${done}" id="saveGo" title="${esc(tip)}">
+      ${ICON_SAVE}${esc(label)}</button>`;
+  $('saveGo').addEventListener('click', openPick);
+}
+
+/* ---------- 选目录 ---------- */
+
+function closePick() { $('pickMask').classList.remove('on'); }
+
+async function openPick() {
+  $('pickMask').classList.add('on');
+  $('pickHint').textContent = `共 ${saveInfo.files} 个文件 · ${fmtSize(saveInfo.bytes)}，将占用你的空间`;
+  $('pickList').innerHTML = '<div class="pick-row"><span>加载中…</span></div>';
+  try {
+    /* /api/flat 给的是这个人的全部节点，正好够拼出目录树 */
+    if (!myFolders) {
+      const d = await req('/api/flat');
+      myFolders = (d.nodes || []).filter(n => n.type === 'folder');
+    }
+    renderPick();
+  } catch (e) {
+    if (e.status === 401) { closePick(); return toast('登录状态已失效，请回到主页重新登录'); }
+    $('pickList').innerHTML = `<div class="pick-row"><span>加载失败：${esc(e.message)}</span></div>`;
+  }
+}
+
+/** 把扁平列表拼成"缩进树"。节点不多，直接算深度即可 */
+function folderTree() {
+  const byId = new Map(myFolders.map(n => [n.id, n]));
+  /* 深度：往上数到根。parent 已经不在我的树里（比如被删了）就停下，
+     否则会一路数到一个不存在的祖先上，缩进全乱 */
+  const depth = n => {
+    let d = 0, p = n.parent, guard = 0;
+    while (p && byId.has(p) && guard++ < 200) { d++; p = byId.get(p).parent; }
+    return d;
+  };
+  const rows = myFolders
+    .map(n => ({ n, d: depth(n) }))
+    .sort((a, b) => a.n.name.localeCompare(b.n.name, 'zh'))
+    .sort((a, b) => a.d - b.d);
+
+  /* 「来自分享」这个默认落点**只画一行**。
+     早先的写法是"顶部固定一行默认 + 下面再列出全部文件夹"，
+     于是用户自己已经有一个叫「来自分享」的文件夹时，两行并存、指向同一处 ——
+     看起来像两个不同的目标，选哪个心里都没底（用户截图上正是这个）。
+     现在：真有就让它出现在自己的位置上并标成默认；没有才插一行虚位。 */
+  const real = rows.find(r => r.n.name === saveInfo.defaultFolder);
+  return { rows, defaultId: real ? real.n.id : null };
+}
+
+function renderPick() {
+  const { rows, defaultId } = folderTree();
+
+  const row = (id, label, d, isDefault, creating) => {
+    const cur = (pickedParent || defaultId || '') === (id || '');
+    const tag = creating
+      ? '<em class="pick-tag">将创建</em>'
+      : (isDefault ? '<em class="pick-tag">默认</em>' : '');
+    return `<button class="pick-row${cur ? ' cur' : ''}" data-pick="${esc(id || '')}"
+              style="padding-left:${11 + d * 15}px">
+        ${ICON_FOLDER}<span>${esc(label)}</span>${tag}</button>`;
+  };
+
+  const body = rows.length
+    ? rows.map(({ n, d }) => row(n.id, n.name, d, n.id === defaultId, false)).join('')
+    : '<div class="pick-row"><span>（还没有别的文件夹）</span></div>';
+
+  /* 默认文件夹还不存在时才多插一行虚位，说明保存时会自动建出来 */
+  const ghost = defaultId ? '' : row('', saveInfo.defaultFolder, 0, true, true);
+
+  $('pickList').innerHTML = ghost + body;
+}
+
+async function doSave() {
+  const btn = $('pickOk');
+  btn.disabled = true;
+  btn.textContent = '保存中…';
+  try {
+    /* 目标目录要**显式**给出来：
+         · 用户自己选了 → 那个 id
+         · 默认「来自分享」已经存在 → 它的 id（不是留空让服务端猜）
+         · 默认还不存在 → null，服务端会建出来
+       早先"默认就传 null"的写法，等于让服务端替用户决定落点，
+       遇到"用户自己已经有一个来自分享"时行为就不透明了。 */
+    const { defaultId } = folderTree();
+    const target = pickedParent || defaultId || null;
+
+    const r = await req(`/api/share/${encodeURIComponent(TOKEN)}/save?stoken=${encodeURIComponent(ST.stoken)}`, {
+      method: 'POST',
+      body: JSON.stringify({ parent: target })
+    });
+    closePick();
+    const where = target
+      ? (myFolders.find(n => n.id === target) || {}).name || '所选文件夹'
+      : saveInfo.defaultFolder;
+    toast(`已存入「${where}」：${r.saved} 个文件 · ${fmtSize(r.bytes)}`);
+    /* 记住这次存到哪了，按钮改成「再存一份」并把这个信息挂在提示里。
+       按钮不隐藏 —— 想再存到别的目录是正常需求。 */
+    savedInfo = { where, count: r.saved };
+    renderSaveReady($('savebar'));
+  } catch (e) {
+    toast(e.message || '转存失败');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '保存到这里';
+  }
+}
+
+$('pickCancel').addEventListener('click', closePick);
+$('pickOk').addEventListener('click', doSave);
+$('pickMask').addEventListener('click', e => { if (e.target === $('pickMask')) closePick(); });
+$('pickList').addEventListener('click', e => {
+  const b = e.target.closest('[data-pick]');
+  if (!b) return;
+  pickedParent = b.dataset.pick || null;
+  renderPick();
+});
+
+/* ---------- 进入 ---------- */
+async function loadList() {
+  const q = new URLSearchParams({ parent: ST.parent || ST.root.id, stoken: ST.stoken });
+  const data = await req(`/api/share/${encodeURIComponent(TOKEN)}/list?${q}`);
+  /* lastData 由 renderChildren 更新，这里不再重复赋值 */
+  renderChildren(data);
+  showBrowse();
+}
+
+async function submitPassword() {
+  const pw = $('pw').value.trim();
+  if (!pw) return gateErr('请输入密码');
+
+  const btn = $('go');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span>';
+  $('err').classList.remove('on');
+
+  try {
+    const data = await req(`/api/share/${encodeURIComponent(TOKEN)}/auth`, {
+      method: 'POST',
+      body: JSON.stringify({ password: pw })
+    });
+    applyPerm(data.perm);
+    ST.stoken = data.stoken;
+    ST.root = data.root;
+    ST.expireAt = data.expireAt;
+    ST.parent = data.root.id;
+    /* 记住这次通过验证的票，下次从主站跳回来就不用再输分享密码了 */
+    saveShareSession(data.stoken, data.expireAt);
+
+    applyBrand(data.brand);
+    renderSharer(data.sharer);
+    renderWatermark(data.watermark);
+    clearInterval(ttlTimer);
+    ttlTimer = setInterval(renderTtl, 1000);
+
+    await loadList();
+    /* 进到内容里之后才问"能不能转存" —— 没通过密码的人不需要看到这个按钮。
+       不 await：它是附加信息，失败了也不该影响看文件。 */
+    initSave().catch(() => {});
+  } catch (e) {
+    if (e.status === 429) gateErr(e.message);
+    else if (e.status === 401) gateErr('密码不对');
+    else if (e.status === 410) {
+      showGate('分享已过期', '这个链接的有效期已经结束，请向分享者索要新的链接。', false);
+    } else if (e.status === 404) {
+      showGate('分享不存在', '链接可能已被撤销或内容已被删除。', false);
+    } else {
+      gateErr(e.message);
+    }
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<span class="lbl">打开</span>';
+  }
+}
+
+/* ---------- 事件 ---------- */
+
+/** 最近一次进目录的时刻（毫秒）。
+    只给下面的双击处理用，见那里的说明 —— 主站也是这个做法。 */
+let navAt = 0;
+
+document.addEventListener('click', e => {
+  const enter = e.target.closest('[data-enter]');
+  if (enter) {
+    navAt = Date.now();
+    return openFolder(enter.dataset.enter).catch(err => toast(err.message));
+  }
+
+  /* 预览排在下载前面：文件名和「预览」按钮都带 data-pv。
+     服务端也会拦（403），这里只是别让用户白点一下。 */
+  const pv = e.target.closest('[data-pv]');
+  if (pv) {
+    if (!PERM.pv) return toast('分享者不允许在线预览');
+    return openPreview(pv.dataset.pv);
+  }
+
+  const dl = e.target.closest('[data-dl]');
+  if (dl && !dl.disabled) {
+    if (!PERM.dl) return toast('分享者不允许下载');
+    return download(dl.dataset.dl);
+  }
+
+  const crumb = e.target.closest('[data-crumb]');
+  if (crumb) {
+    const id = crumb.dataset.crumb;
+    if (id === (ST.parent || ST.root.id)) return;
+    return openFolder(id).catch(err => toast(err.message));
+  }
+});
+
+/* 双击。**和主站同一套行为**，用户在这两个页面之间不会有落差：
+     文件夹 —— 单击就进去（见上面的 click），双击不重复进入；
+     文件   —— 能预览就打开预览，不能预览的直接下载
+               （和主站一致：不能预览的类型直接给文件更友好）。
+
+   ⚠️ 那个 600ms 时间窗是必需的，不是保险起见：
+   文件夹单击已经进了目录，双击的第二下会落在**新列表的行**上，
+   有些浏览器仍会补一个 dblclick —— 不加防护会一口气进两层。
+   主站为此专门留了 navAt，这里照搬。 */
+document.addEventListener('dblclick', e => {
+  /* 按钮有自己的动作，别被双击再触发一次 */
+  if (e.target.closest('button')) return;
+  const row = e.target.closest('[data-id], [data-enter]');
+  if (!row) return;
+
+  /* 文件夹：单击已经处理过了，这里直接放行 —— 但要防"第二下落在新列表上" */
+  if (row.dataset.enter) {
+    if (Date.now() - navAt < 600) return;
+    navAt = Date.now();
+    return openFolder(row.dataset.enter).catch(err => toast(err.message));
+  }
+
+  const id = row.dataset.id;
+  if (!id) return;
+  const node = (lastData && lastData.children || []).find(n => n.id === id);
+  if (!node || node.type === 'folder') return;
+
+  if (node.pv && PERM.pv) return openPreview(id);
+  if (PERM.dl) download(id);
+});
+
+$('go').addEventListener('click', submitPassword);
+$('pw').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); submitPassword(); } });
+
+/* ---------- 工具栏 ----------
+   返回按钮的状态只看 ST.parent —— 它是"我现在在哪一层"的权威值，
+   由 renderChildren 从服务端返回里取。
+
+   早先这两个函数都从面包屑反推（breadcrumb 过滤掉 root 后还有没有剩），
+   那是**错的**：多项分享进第一层子目录时，breadcrumb 是空的
+   （服务端只给祖先链，不含当前目录），于是被当成"已在根"，
+   返回按钮一直是禁用状态 —— 进去就出不来。 */
+
+/** 返回上一级。已经在分享根就不动（没有更上层，外层路径也不该给陌生人看）。
+    多项分享的第一屏是虚拟根（id 空），从子目录回它要传 parent=''。 */
+function goUp() {
+  const rootId = (ST.root && ST.root.id) || '';
+  const cur = ST.parent || rootId;
+  if (cur === rootId) return;
+  openFolder(rootId).catch(err => toast(err.message));
+}
+
+/** 返回按钮的可用状态。每次渲染后调 —— 它取决于当前在哪一层 */
+function syncBackBtn() {
+  const rootId = (ST.root && ST.root.id) || '';
+  $('btnBack').disabled = (ST.parent || rootId) === rootId;
+}
+
+$('btnBack').addEventListener('click', goUp);
+
+/* 视图切换。偏好和主站共用同一个存储键 —— 在一个页面切了，另一个也跟着变，
+   不然两边会各记一套，用户来回跳的时候视图会自己跳来跳去。 */
+$('btnView').addEventListener('click', () => {
+  ST.view = ST.view === 'grid' ? 'list' : 'grid';
+  try { localStorage.setItem('sunlight.view', ST.view); } catch (_) {}
+  renderCurrent();
+});
+
+/* 搜索：**只在当前文件夹里筛**（分享页没有 /api/flat 那套全站清单，
+   而且接收方要的多半就是"这个目录里的某个文件"）。
+   防抖是为了长列表里别每敲一下都重排 DOM。 */
+let qTimer = 0;
+$('q').addEventListener('input', e => {
+  const v = e.target.value;
+  clearTimeout(qTimer);
+  qTimer = setTimeout(() => {
+    ST.q = v;
+    renderCurrent();
+  }, 120);
+});
+$('q').addEventListener('keydown', e => {
+  if (e.key === 'Escape') { e.target.value = ''; ST.q = ''; renderCurrent(); }
+});
+
+/* 主题 */
+(function initTheme() {
+  let t = null;
+  try { t = localStorage.getItem('theme'); } catch (_) {}
+  if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', t);
+})();
+
+/* 视图偏好：和主站共用同一个键，在一处切了另一处也跟着变 */
+try {
+  const v = localStorage.getItem('sunlight.view');
+  if (v === 'grid' || v === 'list') ST.view = v;
+} catch (_) {}
+$('themeBtn').addEventListener('click', () => {
+  const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  try { localStorage.setItem('theme', next); } catch (_) {}
+});
+
+/* ---------- 分享会话的本地记忆 ----------
+   stoken 只活在这个页面的内存里。可一旦因为"登录后转存"跳到主站再跳回来，
+   页面是**重新加载**的，内存清空 —— 于是又要输一遍分享密码。
+   用户会以为"我刚登录过，怎么还让我登"，其实第二次要的是分享密码。
+
+   所以把 stoken 连同它的过期时刻存进 localStorage（按分享 token 分开存）：
+   回来时若还没过期就直接用，跳过密码页。
+   过期的立刻丢掉，绝不拿一张废票去试。 */
+const SESS_KEY = 'sunlight.share.' + TOKEN;
+
+function saveShareSession(stoken, expireAt) {
+  try {
+    localStorage.setItem(SESS_KEY, JSON.stringify({ t: stoken, e: expireAt || 0 }));
+  } catch (_) {}
+}
+
+function loadShareSession() {
+  try {
+    const raw = localStorage.getItem(SESS_KEY);
+    if (!raw) return '';
+    const o = JSON.parse(raw);
+    if (!o || !o.t) return '';
+    /* e 为 0 表示服务端没给过期时间；那就交给服务端去判，别自作主张丢掉 */
+    if (o.e && Date.now() > o.e) { localStorage.removeItem(SESS_KEY); return ''; }
+    return o.t;
+  } catch (_) { return ''; }
+}
+
+function clearShareSession() {
+  try { localStorage.removeItem(SESS_KEY); } catch (_) {}
+}
+
+/* 用本地记住的 stoken 换回分享上下文，直接进内容，不再问密码。
+   失败（票过期 / 分享被撤销）就抛出去，由调用方落回密码页。 */
+async function enterWithSession(stoken) {
+  const data = await req(`/api/share/${encodeURIComponent(TOKEN)}/session?stoken=${encodeURIComponent(stoken)}`, {
+    method: 'POST'
+  });
+  applyPerm(data.perm);
+  ST.stoken = stoken;
+  ST.root = data.root;
+  ST.expireAt = data.expireAt;
+  ST.parent = data.root.id;
+
+  applyBrand(data.brand);
+  renderSharer(data.sharer);
+  renderWatermark(data.watermark);
+  clearInterval(ttlTimer);
+  ttlTimer = setInterval(renderTtl, 1000);
+
+  await loadList();
+}
+
+/* ---------- 水印 ----------
+   文案由服务端拼好下发（品牌 · 分享人 · 日期），这里只负责画。
+   为什么不在这里拼：品牌名在服务端，前端那份是渲染后的 DOM 文本，
+   拿去拼容易因为间距字符之类的差异对不上。
+
+   密度刻意调得很低（见下面的格子尺寸），
+   目的是"抬眼能看见、看内容时不碍事"，不是把页面糊满。 */
+function renderWatermark(text) {
+  const el = $('wm');
+  if (!el) return;
+
+  /* 分享者可以关掉水印（perm 由服务端下发） */
+  if (!PERM.wm || !text) { el.style.display = 'none'; return; }
+
+  /* 用 SVG 画一格斜排文字，再平铺。
+     格子给得比较大（宽 340 / 高 210），所以同一屏上只出现两三次 ——
+     密集的水印会把内容盖得看不清，那反而逼着人去掉它。
+
+     颜色写死在这里、不用 currentColor：去掉 mix-blend-mode 之后，
+     SVG 里的颜色就是最终画出来的颜色，深浅主题得各给一版，
+     否则深底上白字会消失、浅底上黑字会太抢。 */
+  const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const ink = dark ? 'rgb(255,255,255)' : 'rgb(24,24,27)';
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="340" height="210">` +
+    `<text x="14" y="120" transform="rotate(-24 170 105)" ` +
+    `font-family="ui-monospace,Menlo,Consolas,monospace" font-size="12.5" ` +
+    `fill="${ink}" fill-opacity="0.16">${esc(text)}</text></svg>`;
+
+  el.style.backgroundImage = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+  el.style.backgroundSize = '340px 210px';
+  el.style.display = 'block';
+}
+
+/* ---------- 启动 ---------- */
+/* 链接 #p= 片段里的预填密码。片段不会发到服务器，只在本页解析 */
+const HASH_PW = (() => {
+  const m = /^#p=(.+)$/.exec(location.hash || '');
+  if (!m) return '';
+  try { return decodeURIComponent(m[1]); } catch (_) { return m[1]; }
+})();
+
+(async function init() {
+  if (!TOKEN) {
+    return showGate('链接不完整', '地址里没有分享标识，请使用完整的分享链接。', false);
+  }
+  try {
+    const info = await req(`/api/share/${encodeURIComponent(TOKEN)}`);
+    ST.expireAt = info.expireAt;
+    /* 这时还没过密码：服务端只给品牌，不给分享人 —— 没通过验证的人
+       连里面是文件还是文件夹都不该知道，更不该知道是谁分享的 */
+    applyBrand(info.brand);
+    clearInterval(ttlTimer);
+    ttlTimer = setInterval(renderTtl, 1000);
+    renderTtl();
+
+    /* 先看本地记着的分享会话还能不能用 —— 能用就直接进，
+       不再让用户输一遍密码（从主站登录回来时走的就是这条路）。
+       不能用（过期/被撤销）就落回密码页，不多说一句废话。 */
+    const remembered = loadShareSession();
+    if (remembered) {
+      try {
+        await enterWithSession(remembered);
+        initSave().catch(() => {});
+        return;
+      } catch (_) {
+        clearShareSession();   // 废票丢掉，别下次再试
+      }
+    }
+
+    showGate('需要访问密码', '这是一个受保护的分享，请输入分享者给你的临时密码。', true);
+    if (HASH_PW) {
+      /* 分享者发的是带密码的链接：填上直接进，不打扰对方 */
+      $('pw').value = HASH_PW;
+      submitPassword();
+    } else {
+      setTimeout(() => $('pw').focus(), 120);
+    }
+  } catch (e) {
+    if (e.status === 410) return showGate('分享已过期', '这个链接的有效期已经结束，请向分享者索要新的链接。', false);
+    if (e.status === 404) return showGate('分享不存在', '链接可能已被撤销或内容已被删除。', false);
+    showGate('打不开分享', e.message, false);
+  }
+})();
+</script>
+<!-- ============================================================
+     预览弹层（图片 / 视频 / 音频 / PDF）
+     ------------------------------------------------------------
+     和"下载"是两个独立动作：点文件 = 预览，行尾「⋯ → 下载」= 下载原文件。
+     没有 JS 时这段是 display:none，不会挡住页面 —— 预览是增强，不是必需。
+
+     这段在主站和分享页里是**逐字相同**的，配套的 CSS 块（.pv-*）也是。
+     改动请两边一起改，否则同一个控件在两个页面表现不一致。
+     ============================================================ -->
+<div class="pv" id="pv" hidden>
+  <div class="pv-h">
+    <span class="pv-name" id="pvName"></span>
+    <span class="pv-nav">
+      <button id="pvPrev" title="上一个（←）" aria-label="上一个">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <span class="pv-count" id="pvCount"></span>
+      <button id="pvNext" title="下一个（→）" aria-label="下一个">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+    </span>
+    <span class="pv-acts">
+      <button class="pv-act" id="pvOpen" title="在新窗口打开">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14L21 3"/></svg>
+      </button>
+      <button class="pv-act" id="pvDl" title="下载原文件">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M5 21h14"/></svg>
+      </button>
+      <button class="pv-act" id="pvClose" title="关闭（Esc）" aria-label="关闭">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </span>
+  </div>
+  <div class="pv-b" id="pvBody"></div>
+</div>
+
+<script>
+/* ============================================================
+   预览弹层的行为。依赖调用方提供两件东西：
+     getUrl(id)      → Promise<{url, kind, fileName}>   （主站与分享页的接口不同）
+     download(id)    → 触发下载（复用各页已有的逻辑）
+   ============================================================ */
+(function () {
+  var el = document.getElementById('pv');
+  if (!el) return;
+  var body = document.getElementById('pvBody');
+  var nameEl = document.getElementById('pvName');
+  var countEl = document.getElementById('pvCount');
+  var btnPrev = document.getElementById('pvPrev');
+  var btnNext = document.getElementById('pvNext');
+  var btnDl = document.getElementById('pvDl');
+  var btnOpen = document.getElementById('pvOpen');
+  var btnClose = document.getElementById('pvClose');
+
+  /* 当前列表里所有"可预览"的文件，按列表顺序 —— 左右键就在这个数组里走 */
+  var list = [];
+  var at = -1;
+  var cur = null;          // { url, kind, fileName }
+  var token = 0;           // 并发保护：切太快时，旧的响应不许覆盖新的
+  var blobUrl = '';        // PDF 用的 object URL；切走/关闭时必须释放，否则整份文件留在内存里
+
+  /* 释放上一个 blob URL。不释放的话每翻一页 PDF 就漏一份文件大小的内存 */
+  function revokeBlob() {
+    if (blobUrl) { try { URL.revokeObjectURL(blobUrl); } catch (e) {} blobUrl = ''; }
+  }
+  var opts = {};
+
+  function render() {
+    var n = list[at];
+    if (!n) return;
+    nameEl.textContent = n.name;
+    nameEl.title = n.name;
+    countEl.textContent = list.length > 1 ? (at + 1) + ' / ' + list.length : '';
+    btnPrev.disabled = list.length < 2;
+    btnNext.disabled = list.length < 2;
+
+    var my = ++token;
+    revokeBlob();
+    body.innerHTML = '<div class="pv-msg">加载中…</div>';
+
+    Promise.resolve(opts.getUrl(n.id)).then(async function (d) {
+      if (my !== token) return;               // 已经切走了，丢掉这个响应
+      cur = d;
+      var kind = d.kind || n.pv;
+      if (kind === 'image') {
+        var img = document.createElement('img');
+        img.className = 'pv-media';
+        img.alt = n.name;
+        img.onerror = function () {
+          if (my === token) body.innerHTML = '<div class="pv-msg">图片加载失败，可以试试下载后查看</div>';
+        };
+        img.src = d.url;
+        body.innerHTML = '';
+        body.appendChild(img);
+      } else if (kind === 'video') {
+        var v = document.createElement('video');
+        v.className = 'pv-media';
+        v.controls = true;
+        v.autoplay = true;          // 用户是主动点的，播放是预期行为
+        v.playsInline = true;
+        v.preload = 'metadata';     // 不预载整个文件，只拉头部
+        v.src = d.url;
+        v.onerror = function () {
+          if (my === token) body.innerHTML = '<div class="pv-msg">这个视频浏览器放不了（可能是编码或容器不兼容），可以下载后用本地播放器打开</div>';
+        };
+        body.innerHTML = '';
+        body.appendChild(v);
+      } else if (kind === 'audio') {
+        var a = document.createElement('audio');
+        a.className = 'pv-media';
+        a.controls = true;
+        a.autoplay = true;
+        a.src = d.url;
+        body.innerHTML = '';
+        body.appendChild(a);
+      } else {
+        /* PDF：取回来自己转成 blob URL 再看。
+           为什么不直接把签名 URL 塞进 iframe：对象的 Content-Disposition 是
+           attachment（实测这个 bucket 上 OSS **忽略** response-content-disposition，
+           覆盖不了），而 iframe 在部分浏览器里被当成顶层导航 ——
+           于是会触发下载而不是显示。转成 blob 之后类型完全由我们说了算，
+           手机上"iframe 不渲染 PDF"的老问题也一并绕开了。 */
+        try {
+          var resp = await fetch(d.url);
+          if (!resp.ok) throw new Error('HTTP ' + resp.status);
+          /* 用白名单里的类型，不用 OSS 回的 —— 它可能是 octet-stream */
+          var blob = new Blob([await resp.arrayBuffer()], { type: 'application/pdf' });
+          revokeBlob();
+          blobUrl = URL.createObjectURL(blob);
+          var f = document.createElement('iframe');
+          f.className = 'pv-media';
+          f.src = blobUrl;
+          f.title = n.name;
+          body.innerHTML = '';
+          body.appendChild(f);
+        } catch (err) {
+          if (my !== token) return;
+          body.innerHTML = '<div class="pv-msg">PDF 加载失败，可以试试右上角的下载</div>';
+        }
+      }
+      /* 预取下一张图片，左右切换时更顺。失败无所谓，不处理 */
+      var nx = list[at + 1];
+      if (nx && nx.pv === 'image' && opts.getUrl) {
+        Promise.resolve(opts.getUrl(nx.id)).then(function (nd) {
+          if (my === token && nd && nd.url) { var pre = new Image(); pre.src = nd.url; }
+        }).catch(function () {});
+      }
+    }).catch(function (e) {
+      if (my !== token) return;
+      cur = null;
+      body.innerHTML = '<div class="pv-msg">' + escHtml(e && e.message || '打不开这个文件') + '</div>';
+    });
+  }
+
+  /* 停止正在播放的声音 —— 否则关掉弹层或切走之后声音还在响 */
+  function stopMedia() {
+    revokeBlob();
+    var m = body.querySelector('audio, video');
+    if (m) { try { m.pause(); m.removeAttribute('src'); m.load(); } catch (e) {} }
+    body.innerHTML = '';
+  }
+
+  function escHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function open(nodes, id, options) {
+    opts = options || {};
+    /* 只有能预览的才进列表：预览一张图时按右键，应该走到下一张图，
+       而不是跳到一个打不开的 zip 上 */
+    list = (nodes || []).filter(function (n) { return n && n.type === 'file' && n.pv; });
+    at = list.findIndex(function (n) { return n.id === id; });
+    if (at < 0) return false;
+    el.hidden = false;
+    document.documentElement.classList.add('pv-lock');
+    render();
+    btnClose.focus();
+    return true;
+  }
+
+  function close() {
+    token++;
+    revokeBlob();
+    if (cur && opts.onClose) { try { opts.onClose(); } catch (e) {} }
+    cur = null;
+    el.hidden = true;
+    document.documentElement.classList.remove('pv-lock');
+    stopMedia();
+  }
+
+  function step(d) {
+    if (list.length < 2) return;
+    stopMedia();
+    at = (at + d + list.length) % list.length;   // 首尾相接
+    render();
+  }
+
+  btnClose.addEventListener('click', close);
+  btnPrev.addEventListener('click', function () { step(-1); });
+  btnNext.addEventListener('click', function () { step(1); });
+  el.addEventListener('click', function (e) {
+    /* 点弹层的空白背景 = 关闭。点内容本身不关 */
+    if (e.target === el || e.target === body) close();
+  });
+
+  btnDl.addEventListener('click', function () {
+    if (list[at]) opts.download(list[at].id);
+  });
+  /* 新窗口打开：PDF 在手机上可能要借这条路 */
+  btnOpen.addEventListener('click', function () {
+    if (cur && cur.url) window.open(cur.url, '_blank', 'noopener');
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (el.hidden) return;
+    if (e.key === 'Escape') { close(); }
+    else if (e.key === 'ArrowLeft') { step(-1); }
+    else if (e.key === 'ArrowRight') { step(1); }
+  });
+
+  /* 手机上左右滑 —— 看一组照片时这是最自然的动作 */
+  var tx = 0, ty = 0;
+  body.addEventListener('touchstart', function (e) {
+    if (e.touches.length !== 1) return;
+    tx = e.touches[0].clientX; ty = e.touches[0].clientY;
+  }, { passive: true });
+  body.addEventListener('touchend', function (e) {
+    if (e.touches.length) return;
+    var dx = (e.changedTouches[0].clientX - tx);
+    var dy = (e.changedTouches[0].clientY - ty);
+    /* 横向位移要够大，且明显比纵向大 —— 否则会和上下滚动/双击缩放打架 */
+    if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy) * 1.5) step(dx < 0 ? 1 : -1);
+  }, { passive: true });
+
+  window.PV = { open: open, close: close, isOpen: function () { return !el.hidden; } };
+})();
+</script>
+
+</body>
+</html>

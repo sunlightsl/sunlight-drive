@@ -1,0 +1,24 @@
+# 换行符统一成 LF
+# ------------------------------------------------------------------
+# 不加这个文件的话，Git 在 Windows 上检出时会把 LF 转成 CRLF
+# （`git add` 会警告 "LF will be replaced by CRLF"），
+# 而 Linux 上仍是 LF —— 同一个文件在不同平台产生不同的 diff，
+# 协作时满屏都是"整文件被改"的假改动。
+#
+# 这个项目全是 Node / HTML / 少量 Python，没有任何地方依赖 CRLF，
+# 所以统一锁成 LF：仓库里存 LF，检出也是 LF。
+* text=auto eol=lf
+
+# 二进制：不要做任何换行转换，也不要尝试 diff
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.webp binary
+*.ico  binary
+*.zip  binary
+*.gz   binary
+*.tgz  binary
+
+# lock 文件不参与 diff 语言统计（省得仓库首页把它算成主要语言）
+package-lock.json -diff linguist-generated

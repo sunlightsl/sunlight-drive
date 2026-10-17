@@ -1,0 +1,44 @@
+{
+  "name": "sunlight-drive",
+  "version": "1.0.0",
+  "description": "多用户私有云盘：文件存在你自己的阿里云 OSS 里，服务器只负责认证与签发临时链接",
+  "license": "MIT",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node dev.js",
+    "test": "node test/run.js && node test/oss-config.js && node test/multipart.js && node test/account-state.js && node test/session-cookie.js && node test/share-save.js && node test/preview.js && node test/error-handler.js && node test/first-owner.js && node test/dev-js.js && node test/data-dir.js && node test/e2e.js",
+    "test:ui": "node test/refresh-recover.js && node test/share-view.js && node test/share-align.js && node test/share-mobile.js && node test/admin-quota.js"
+  },
+  "keywords": [
+    "cloud-drive",
+    "private-cloud",
+    "oss",
+    "aliyun",
+    "express",
+    "self-hosted",
+    "totp",
+    "2fa",
+    "zero-dependency-frontend"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "os": [
+    "linux",
+    "darwin",
+    "win32"
+  ],
+  "dependencies": {
+    "ali-oss": "^6.21.0",
+    "express": "^4.21.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sunlightsl/sunlight-drive.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sunlightsl/sunlight-drive/issues"
+  },
+  "homepage": "https://github.com/sunlightsl/sunlight-drive#readme"
+}
