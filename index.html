@@ -295,6 +295,18 @@
   .menu button .tail{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--text-faint)}
   .menu button.danger:hover{background:color-mix(in srgb,var(--red) 12%,transparent)}
 
+  /* 用量条：只占菜单顶部一行，不抢账号信息的注意力。
+     额度用完前不报警，只在数字上如实显示，快满时把条染成警示色。 */
+  .menu-quota{padding:0 9px 9px;border-bottom:1px solid var(--border);margin-bottom:4px}
+  .menu-quota .qline{display:flex;align-items:baseline;gap:6px;font-size:11.5px;color:var(--text-faint)}
+  .menu-quota .qline b{color:var(--text-dim);font-weight:600;font-family:var(--mono)}
+  .menu-quota .qline .qrest{margin-left:auto;font-family:var(--mono)}
+  .menu-quota .qbar{height:4px;border-radius:2px;background:var(--bg-hover);overflow:hidden;margin-top:6px}
+  .menu-quota .qbar i{display:block;height:100%;border-radius:2px;background:var(--accent);transition:width .2s}
+  .menu-quota.warn .qbar i{background:#d97706}
+  .menu-quota.full .qbar i{background:var(--red)}
+  .menu-quota .qnote{margin-top:5px;font-size:11px;color:var(--text-faint)}
+
   /* ---------- 账号面板 ---------- */
   .acct-row{display:flex;align-items:baseline;gap:12px;padding:9px 0;font-size:13.5px;
     border-bottom:1px solid var(--border)}
@@ -4337,7 +4349,7 @@ function applyAccount(patch) {
 async function loadAccount() {
   try {
     const d = await api('/api/account');
-    applyAccount({ ...d.account, sessions: d.sessions, twoFactor: d.twoFactor });
+    applyAccount({ ...d.account, sessions: d.sessions, twoFactor: d.twoFactor, storage: d.storage });
   } catch (e) {
     /* 拉不到就退回品牌名，不值得为它把整个界面卡住 */
     if (!e.handled) applyAccount({ nickname: '', avatar: '' });
@@ -4373,6 +4385,61 @@ function openUploadMenu(btn) {
 
 /* ---- 头像菜单 ---- */
 
+/**
+ * 用量条的内容。三种情况分开说，别让用户去猜"null 是什么意思"：
+ *   绑了自己的桶  → 平台不限额，用多少由他自己的 OSS 决定
+ *   配额为 0/null → 不限
+ *   有配额        → 已用 / 总额 + 剩余，快满时换颜色
+ */
+function quotaHTML(st) {
+  if (!st) return '';
+  const used = st.usedBytes || 0;
+
+  if (st.storageBound) {
+    return `<div class="qnote">已用 ${fmtSize(used)} · 存在你自己的存储里，不受平台配额限制</div>`;
+  }
+  if (st.quotaBytes == null) {
+    return `<div class="qnote">已用 ${fmtSize(used)} · 不限容量</div>`;
+  }
+
+  const quota = st.quotaBytes;
+  const left = Math.max(0, quota - used);
+  const pct = quota > 0 ? Math.min(100, (used / quota) * 100) : 0;
+  const cls = used >= quota ? ' full' : (pct >= 85 ? ' warn' : '');
+  /* 在途上传会让"剩余"暂时偏小，说明一句，免得用户以为算错了 */
+  const pending = st.pendingBytes > 0
+    ? `<div class="qnote">另有 ${fmtSize(st.pendingBytes)} 正在上传</div>` : '';
+
+  return `<div class="qline"><b>${fmtSize(used)}</b> / ${fmtSize(quota)}
+      <span class="qrest">${used >= quota ? '已满' : '剩 ' + fmtSize(left)}</span></div>
+    <div class="qbar"><i style="width:${pct.toFixed(1)}%"></i></div>${pending}`;
+}
+
+/** 刷新用量：菜单打开时顺手拉一次，避免显示上次打开时的旧数字 */
+async function refreshStorage() {
+  try {
+    const d = await api('/api/account');
+    if (d.storage) {
+      S.account = Object.assign(S.account || {}, { storage: d.storage });
+      const el = $('menuQuota');
+      if (el) {
+        const wrap = el.closest('.menu-quota');
+        if (wrap) {
+          wrap.className = 'menu-quota' + quotaState(d.storage);
+          /* qline/qbar 会整段替换，所以外面这层要单独留着 */
+          wrap.innerHTML = quotaHTML(d.storage);
+        }
+      }
+    }
+  } catch (_) { /* 拿不到就算了，菜单照常可用 */ }
+}
+
+function quotaState(st) {
+  if (!st || st.quotaBytes == null || st.storageBound) return '';
+  const pct = st.quotaBytes > 0 ? (st.usedBytes / st.quotaBytes) * 100 : 0;
+  return st.usedBytes >= st.quotaBytes ? ' full' : (pct >= 85 ? ' warn' : '');
+}
+
 function openAccountMenu(btn) {
   const a = S.account || {};
   const rows = [
@@ -4399,10 +4466,14 @@ function openAccountMenu(btn) {
         <span>@${esc(a.username || '')}</span>
       </span>
     </div>
+    <div class="menu-quota${quotaState(a.storage)}" id="menuQuota">${quotaHTML(a.storage)}</div>
     ${rows.map(r => r.hr ? '<div class="hr"></div>'
       : `<button data-k="${r.k}" class="${r.danger ? 'danger' : ''}">${r.icon}${esc(r.label)}
          ${r.tail ? `<span class="tail">${esc(r.tail)}</span>` : ''}</button>`).join('')}
   `;
+
+  /* 打开时拉一次最新用量 —— 刚传完/删完数字才对得上 */
+  refreshStorage();
 
   const r = btn.getBoundingClientRect();
   const mw = menu.offsetWidth, mh = menu.offsetHeight;

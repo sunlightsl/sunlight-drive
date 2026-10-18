@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/node-%E2%89%A520-4f46e5.svg" alt="Node ≥20">
   <img src="https://img.shields.io/badge/frontend-zero--dependency-4f46e5.svg" alt="Zero-dependency frontend">
   <img src="https://img.shields.io/badge/deps-express%20%2B%20ali--oss-4f46e5.svg" alt="2 dependencies">
-  <img src="https://img.shields.io/badge/tests-11%20suites-4f46e5.svg" alt="11 test suites">
+  <img src="https://img.shields.io/badge/tests-13%20%2B%206%20suites-4f46e5.svg" alt="19 test suites">
 </p>
 
 浏览器里像用网盘那样管文件，但字节不落在服务器上 ——
@@ -411,7 +411,7 @@ curl -s -o /dev/null -w '匿名写对象 -> %{http_code}\n' -X PUT --data x \
 | `DRIVE_DATA_DIR` | `./data` | 数据目录（`drive.json` / `secrets.json` / `.master.key`） |
 | `TRUST_PROXY` | `0` | 仅在反向代理之后才设 `1` |
 | `MAX_UPLOAD_MB` | `2048` | 单文件上限，要和 Nginx 对齐 |
-| `QUOTA_GB` | `1` | 用平台存储的用户的默认配额，`0` = 不限 |
+| `QUOTA_GB` | `1` | 用平台存储的用户的默认配额，`0` = 不限。用量在头像菜单里对用户可见 |
 | `SHARE_TTL` | `7200` | 分享默认有效期（秒） |
 | `SIGN_TTL` | `300` | 下载链接有效期（秒） |
 | `TZ` | — | 时区。Linux / macOS 生效，**Windows 不认**（那边改系统时区） |
@@ -465,9 +465,9 @@ PROJECT-BOOK.md      设计、理念、部署、踩坑记录
 ## 测试
 
 ```bash
-npm test          # 11 个套件：纯逻辑、配置、签名、账号、分享、预览、
-                  # 错误处理、首次部署、启动器、数据目录、端到端
-npm run test:ui   # 5 个套件：浏览器行为（需要本机有 Edge/Chrome，没有会跳过）
+npm test          # 13 个套件：纯逻辑、配置、签名、账号、分享、预览、错误处理、
+                  # 首次部署、启动器、数据目录、配额、端到端
+npm run test:ui   # 6 个套件：浏览器行为（需要本机有 Edge/Chrome，没有会跳过）
 ```
 
 全部**零依赖**，不需要装测试框架，也不需要对象存储 ——
@@ -486,12 +486,14 @@ npm run test:ui   # 5 个套件：浏览器行为（需要本机有 Edge/Chrome�
 | `test/first-owner.js` | 首次部署：四种组合下谁成为站长，含「注册关闭 + 无口令」的自锁场景 |
 | `test/dev-js.js` | 本地启动器：默认不生成口令、`--with-password` 才生成、不覆盖已有 `.gitignore` |
 | `test/data-dir.js` | `DRIVE_DATA_DIR` 的路径解析：空值/空格值回落到 `./data`，绝对路径按其生效 |
+| `test/quota.js` | 配额：用户可见的用量、超额拦截、并发预占、落树复核、超时释放 |
 | `test/e2e.js` | 接口串起来的行为：登录限流、静态白名单、树操作、分享与越权、双因素第一步 |
 | `test/refresh-recover.js` | 用 CDP 驱动真实浏览器：刷新页面后未完成的传输能不能找回来、重选文件是续传还是重传 |
 | `test/share-view.js` | 分享页交互：类型图标渲染、点文件夹进出、双击语义、返回按钮、视图切换、搜索 |
 | `test/share-align.js` | 列对齐：表头与各行的右边缘、操作列宽度不随内容变、窄屏不横向溢出 |
 | `test/share-mobile.js` | 窄屏布局：标题与转存按钮同行、长标题不撑破、大小列按预期隐藏 |
 | `test/admin-quota.js` | 用户管理的配额控件：输入框不被挤扁、三种来源标记、窄屏不溢出 |
+| `test/quota-ui.js` | 头像菜单的用量条：数字与接口一致、接近满时换警示色、不撑破菜单 |
 
 另有几个**手动**脚本（不在 `npm test` 里，需要真机或真实 OSS）：
 
@@ -533,9 +535,6 @@ npm run test:ui   # 5 个套件：浏览器行为（需要本机有 Edge/Chrome�
 - **中文文档**。界面和文档目前都是中文，暂无英文版。
 - **单实例**。会话存在内存里，重启后需要重新登录；
   多实例部署需要把会话和数据结构换成共享组件。
-- **配额可被并发绕过**。配额在写字节之前检查，而"已用空间"按文件树实时聚合 ——
-  同一账号并发上传时每个请求都会看到同一个"已用"，可以短暂超出。
-  单文件上限仍然有效。
 - **小文件没有断点续传**。小于阈值的文件走一次性上传，协议上没有"部分"的概念，
   刷新后只能重传（界面会明确区分这两种状态）。
 - **自带桶的孤儿分片不会被回收**。定时回收任务只扫平台自己的桶，

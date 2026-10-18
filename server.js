@@ -250,21 +250,51 @@ async function copyObjectWithin(userId, srcKey, destKey, size) {
 }
 
 /**
- * 存储配额检查：只约束"用平台存储"的普通用户。
- * 绑了自己桶的人空间自理（付的是他自己的 OSS 账单），不占平台配额；
- * owner 是站长本人，不受限。
+ * 存储配额
+ * ================================================================
+ * 只约束"用平台存储"的普通用户。绑了自己桶的人空间自理（付的是他自己的
+ * OSS 账单），不占平台配额；owner 是站长本人，不受限。
  *
  * quotaBytes 未单独设置时跟随全站默认（QUOTA_GB）——
  * 注意"未设置"是**跟随默认**，不是"不限"：默认 1GB 的站上，
  * 清空某个用户的配额之后他仍然受 1GB 约束。
- * 只有 QUOTA_GB 本身为 0 时全站才是不限（下面 `if (!quota) return` 那条）。
+ * 只有 QUOTA_GB 本身为 0 时全站才是不限。
+ */
+
+/** 这个用户实际适用的配额（字节）。null = 不限 */
+function effectiveQuota(user) {
+  if (user.role === 'owner') return null;
+  if (ossconfig.getEntry(user.id)) return null;
+  const q = user.quotaBytes != null ? user.quotaBytes : CFG.quotaBytes;
+  return q || null;
+}
+
+/* 在途上传预占的额度。
+   只看已落树的大小是不够的：三个 600MB 同时申请、各自都通过检查，
+   合并落地后就变成 1.8GB 压在 1GB 的配额上。签发凭证时先把声明的
+   字节占住，落树 / 放弃 / 会话超时再释放。 */
+const pendingQuota = new Map(); // userId -> bytes
+
+function reserveQuota(userId, bytes) {
+  if (!(bytes > 0)) return;
+  pendingQuota.set(userId, (pendingQuota.get(userId) || 0) + bytes);
+}
+
+function releaseQuota(userId, bytes) {
+  if (!(bytes > 0)) return;
+  const left = (pendingQuota.get(userId) || 0) - bytes;
+  if (left > 0) pendingQuota.set(userId, left);
+  else pendingQuota.delete(userId);
+}
+
+/**
+ * 检查还能不能再放下 incoming 字节。超了抛 413。
+ * used 含**已落树**与**在途预占**两部分，所以并发申请不会各自都通过。
  */
 function checkQuota(user, sc, incoming) {
-  if (user.role === 'owner') return;
-  if (ossconfig.getEntry(user.id)) return;
-  const quota = user.quotaBytes != null ? user.quotaBytes : CFG.quotaBytes;
+  const quota = effectiveQuota(user);
   if (!quota) return;
-  const used = sc.stats().bytes;
+  const used = sc.stats().bytes + (pendingQuota.get(user.id) || 0);
   if (used + incoming > quota) {
     const e = new Error(
       `空间不足：配额 ${(quota / 1073741824).toFixed(1)} GB，` +
@@ -272,6 +302,17 @@ function checkQuota(user, sc, incoming) {
     e.status = 413;
     throw e;
   }
+}
+
+/** 用户视角的存储用量与额度，供界面显示 */
+function quotaView(user, sc) {
+  const quota = effectiveQuota(user);
+  return {
+    usedBytes: sc.stats().bytes,
+    quotaBytes: quota,                                  // null = 不限
+    pendingBytes: pendingQuota.get(user.id) || 0,
+    storageBound: !!ossconfig.getEntry(user.id)        // 绑了自己的桶，平台不限额
+  };
 }
 
 const pendingTotp = (u) => users.totpPending(u);
@@ -418,6 +459,7 @@ app.get('/api/session', (req, res) => {
 
 app.get('/api/account', requireAuth, (req, res) => {
   res.set('Cache-Control', 'no-store');
+  const sc = scopeOf(req);
   ok(res, {
     account: {
       ...users.pub(req.auth.user),
@@ -425,6 +467,8 @@ app.get('/api/account', requireAuth, (req, res) => {
       /* 个人视角的上传可用性：绑了自己的桶，平台没配也能传 */
       uploadReady: !!ossconfig.activeFor(req.auth.userId)
     },
+    /* 用量与额度：界面要说清"还能放多少"，而不是只有站长知道 */
+    storage: quotaView(req.auth.user, sc),
     /* 显示有几处登录着。改密码之后只会剩当前这一张票 */
     sessions: auth.countSessionsOf(req.auth.userId),
     twoFactor: { digits: totp.DIGITS, period: totp.STEP }
@@ -987,65 +1031,72 @@ app.post('/api/upload', requireAuth, wrap(async (req, res) => {
   }
   checkQuota(req.auth.user, sc, declared);
 
-  const client = ossconfig.getClientFor(req.auth.userId);
-  const activeCfg = ossconfig.activeFor(req.auth.userId);
-  const ossKey = makeOssKeyFor(activeCfg.cfg, name, req.auth.user.username, activeCfg.source !== 'ui-user');
-
-  // 客户端中途断开时，别把半个文件登记进树。
-  // 判定逻辑（包括为什么不能用 'close'）见 lib/reqguard.js
-  const guard = trackRequest(req);
-
-  const t0 = Date.now();
+  /* 中转是流式写入，整个传输过程都要占着这份额度 ——
+     否则同一用户的两个大文件并行进来会各自通过检查。 */
+  reserveQuota(req.auth.userId, declared);
   try {
-    await client.putStream(ossKey, req, {
-      contentLength: declared,
-      /* 类型按扩展名推断（preview.mimeForUpload），不采信客户端的 Content-Type。
-         必须在这里就给对：OSS 不允许在签名阶段覆盖 content-type（实测 400），
-         对象落盘那一刻类型就定死了。 */
-      mime: preview.mimeForUpload(name),
-      headers: {
-        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(name)}`
+    const client = ossconfig.getClientFor(req.auth.userId);
+    const activeCfg = ossconfig.activeFor(req.auth.userId);
+    const ossKey = makeOssKeyFor(activeCfg.cfg, name, req.auth.user.username, activeCfg.source !== 'ui-user');
+
+    // 客户端中途断开时，别把半个文件登记进树。
+    // 判定逻辑（包括为什么不能用 'close'）见 lib/reqguard.js
+    const guard = trackRequest(req);
+
+    const t0 = Date.now();
+    try {
+      await client.putStream(ossKey, req, {
+        contentLength: declared,
+        /* 类型按扩展名推断（preview.mimeForUpload），不采信客户端的 Content-Type。
+           必须在这里就给对：OSS 不允许在签名阶段覆盖 content-type（实测 400），
+           对象落盘那一刻类型就定死了。 */
+        mime: preview.mimeForUpload(name),
+        headers: {
+          'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(name)}`
+        }
+      });
+    } catch (e) {
+      // 传失败就把半截对象清掉，别留垃圾
+      try { await client.delete(ossKey); } catch (_) {}
+      if (guard.isAborted()) {
+        console.warn(`[upload] 客户端中断，已清理 ${ossKey}`);
+        return fail(res, 400, '上传中断');
       }
-    });
-  } catch (e) {
-    // 传失败就把半截对象清掉，别留垃圾
-    try { await client.delete(ossKey); } catch (_) {}
+      console.error('[upload] 失败', e.message);
+      return fail(res, 502, '上传到对象存储失败：' + e.message);
+    }
+
     if (guard.isAborted()) {
-      console.warn(`[upload] 客户端中断，已清理 ${ossKey}`);
+      try { await client.delete(ossKey); } catch (_) {}
       return fail(res, 400, '上传中断');
     }
-    console.error('[upload] 失败', e.message);
-    return fail(res, 502, '上传到对象存储失败：' + e.message);
-  }
 
-  if (guard.isAborted()) {
-    try { await client.delete(ossKey); } catch (_) {}
-    return fail(res, 400, '上传中断');
-  }
+    // 落库之前先核对 OSS 上真实大小。传输层出错时长度可能对不上，
+    // 登记一个坏的节点比直接报错更糟——用户会以为传成功了。
+    let stored = null;
+    try {
+      const h = await client.head(ossKey);
+      stored = parseInt(h.res.headers['content-length'], 10);
+    } catch (e) {
+      try { await client.delete(ossKey); } catch (_) {}
+      return fail(res, 502, '上传后核对失败：' + e.message);
+    }
+    if (stored !== declared) {
+      try { await client.delete(ossKey); } catch (_) {}
+      return fail(res, 502, `上传大小不一致（发送 ${declared}，实际 ${stored}），已回滚`);
+    }
 
-  // 落库之前先核对 OSS 上真实大小。传输层出错时长度可能对不上，
-  // 登记一个坏的节点比直接报错更糟——用户会以为传成功了。
-  let stored = null;
-  try {
-    const h = await client.head(ossKey);
-    stored = parseInt(h.res.headers['content-length'], 10);
-  } catch (e) {
-    try { await client.delete(ossKey); } catch (_) {}
-    return fail(res, 502, '上传后核对失败：' + e.message);
-  }
-  if (stored !== declared) {
-    try { await client.delete(ossKey); } catch (_) {}
-    return fail(res, 502, `上传大小不一致（发送 ${declared}，实际 ${stored}），已回滚`);
-  }
+    const node = await store.mutate(s => scope.open(s, req.auth.userId).addFile({
+      name, parentId: parent || null, size: declared, ossKey,
+      mime: 'application/octet-stream'
+    }));
 
-  const node = await store.mutate(s => scope.open(s, req.auth.userId).addFile({
-    name, parentId: parent || null, size: declared, ossKey,
-    mime: 'application/octet-stream'
-  }));
-
-  const sec = ((Date.now() - t0) / 1000).toFixed(1);
-  console.log(`[upload] ${node.name} ${(declared / 1048576).toFixed(1)}MB ${sec}s ip=${getIp(req)}`);
-  ok(res, { node: pub(node), renamed: node.name !== name ? name : null });
+    const sec = ((Date.now() - t0) / 1000).toFixed(1);
+    console.log(`[upload] ${node.name} ${(declared / 1048576).toFixed(1)}MB ${sec}s ip=${getIp(req)}`);
+    ok(res, { node: pub(node), renamed: node.name !== name ? name : null });
+  } finally {
+    releaseQuota(req.auth.userId, declared);
+  }
 }));
 
 /* ================================================================
@@ -1063,7 +1114,29 @@ const directUploads = new Map(); // uploadId -> { ossKey, name, parent, userId, 
 function directSweep() {
   const now = Date.now();
   for (const [id, info] of directUploads) {
-    if (now > info.expires) directUploads.delete(id);
+    if (now > info.expires) {
+      releaseQuota(info.userId, info.reserved);
+      directUploads.delete(id);
+    }
+  }
+}
+
+/* 预占额度的最长占用时间。
+   上传被放弃、或浏览器直接关掉之后，会话本身可能还要留很久（分片会话一天），
+   但额度不该陪它一起等着 —— 超时即释放，用户马上就能传别的。
+   真正的把关在 complete：那里按**实际**大小复核配额，
+   所以提前释放不会放过超额，只是少了一层并发保护。 */
+const RESERVE_MAX = 60 * 60 * 1000;
+
+function sweepQuotaReservations() {
+  const now = Date.now();
+  for (const map of [directUploads, directMparts]) {
+    for (const info of map.values()) {
+      if (info.reserved && now - (info.reservedAt || 0) > RESERVE_MAX) {
+        releaseQuota(info.userId, info.reserved);
+        info.reserved = 0;
+      }
+    }
   }
 }
 
@@ -1118,8 +1191,12 @@ app.post('/api/upload/policy', requireAuth, wrap(async (req, res) => {
   directUploads.set(uploadId, {
     ossKey, name, parent: parent || null,
     userId: req.auth.userId, mime: '',
+    /* 占住的额度：完成 / 放弃 / 超时时按这个数释放 */
+    reserved: size,
+    reservedAt: Date.now(),
     expires: Date.now() + 15 * 60 * 1000
   });
+  reserveQuota(req.auth.userId, size);
 
   ok(res, {
     uploadId,
@@ -1143,6 +1220,8 @@ app.post('/api/upload/complete', requireAuth, wrap(async (req, res) => {
     return fail(res, 404, '直传会话不存在或已过期');
   }
   directUploads.delete(uploadId);
+  /* 先释放这份上传自己的预占，下面的复核才不会把它自己算两遍 */
+  releaseQuota(info.userId, info.reserved);
 
   const client = ossconfig.getClientFor(req.auth.userId);
   let stored = 0;
@@ -1156,6 +1235,16 @@ app.post('/api/upload/complete', requireAuth, wrap(async (req, res) => {
   if (stored > CFG.maxUploadBytes) {
     try { await client.delete(info.ossKey); } catch (_) {}
     return fail(res, 413, '文件超过上限，已删除');
+  }
+
+  /* 声明的大小可以被伪造（凭证允许到全站上限），所以按**实际**大小再核一次配额。
+     超了就删掉刚传上去的对象 —— 否则对象在桶里、树里没有，用户既用不了也删不掉。 */
+  const me = req.auth.user;
+  try {
+    checkQuota(me, scopeOf(req), stored);
+  } catch (e) {
+    try { await client.delete(info.ossKey); } catch (_) {}
+    return fail(res, e.status || 413, e.message);
   }
 
   const mime = String((req.body && req.body.mime) || '').slice(0, 100);
@@ -1220,7 +1309,9 @@ app.post('/api/upload/mpart/init', requireAuth, wrap(async (req, res) => {
   }).catch(e => { throw httpErr(502, '初始化分片上传失败：' + e.message); });
 
   if (directMparts.size > 5000) {
-    for (const [id, info] of directMparts) if (Date.now() > info.expires) directMparts.delete(id);
+    for (const [id, info] of directMparts) {
+      if (Date.now() > info.expires) { releaseQuota(info.userId, info.reserved); directMparts.delete(id); }
+    }
   }
   const uploadId = crypto.randomBytes(16).toString('hex');
   directMparts.set(uploadId, {
@@ -1228,8 +1319,12 @@ app.post('/api/upload/mpart/init', requireAuth, wrap(async (req, res) => {
     userId: req.auth.userId,
     mime,
     size, partSize,
+    /* 占住的额度：完成 / 放弃 / 会话超时时按这个数释放 */
+    reserved: size,
+    reservedAt: Date.now(),
     expires: Date.now() + MPART_TTL
   });
+  reserveQuota(req.auth.userId, size);
 
   ok(res, {
     uploadId,
@@ -1303,6 +1398,8 @@ app.post('/api/upload/mpart/complete', requireAuth, wrap(async (req, res) => {
   }
 
   directMparts.delete(uploadId);
+  /* 先释放这份上传自己的预占，下面的复核才不会把它自己算两遍 */
+  releaseQuota(info.userId, info.reserved);
 
   let stored = 0;
   try {
@@ -1314,6 +1411,15 @@ app.post('/api/upload/mpart/complete', requireAuth, wrap(async (req, res) => {
   if (stored > CFG.maxUploadBytes) {
     try { await client.delete(info.ossKey); } catch (_) {}
     return fail(res, 413, '文件超过上限，已删除');
+  }
+
+  /* 声明的大小可以被伪造（凭证允许到全站上限），按**实际**大小再核一次配额。
+     超了就删掉刚合并的对象，避免留下"桶里有、树里没有"的垃圾。 */
+  try {
+    checkQuota(req.auth.user, scopeOf(req), stored);
+  } catch (e) {
+    try { await client.delete(info.ossKey); } catch (_) {}
+    return fail(res, e.status || 413, e.message);
   }
 
   const mime = String(info.mime || '').slice(0, 100) || 'application/octet-stream';
@@ -1330,6 +1436,7 @@ app.post('/api/upload/mpart/abort', requireAuth, wrap(async (req, res) => {
   const info = directMparts.get(uploadId);
   if (!info || info.userId !== req.auth.userId) return fail(res, 404, '分片会话不存在或已过期');
   directMparts.delete(uploadId);
+  releaseQuota(info.userId, info.reserved);
   const client = ossconfig.getClientFor(req.auth.userId);
   try { await client.abortMultipartUpload(info.ossKey, info.ossUploadId); } catch (_) {}
   ok(res, {});
@@ -2388,6 +2495,9 @@ async function start() {
       setTimeout(() => sweepMultipartOrphans().catch(() => {}), 30 * 1000);
       setInterval(() => sweepMultipartOrphans().catch(() => {}), 6 * 3600 * 1000);
 
+      /* 在途上传的额度预占：放手不管就会一直占着，每分钟清一次超期的 */
+      setInterval(sweepQuotaReservations, 60 * 1000);
+
       resolve(server);
     });
   });
@@ -2399,3 +2509,7 @@ if (require.main === module) start();
 module.exports = app;
 module.exports.start = start;
 module.exports.bootstrap = bootstrap;
+/* 测试用：在途额度的清理函数与内部状态。
+   单独挂一个名字，免得别处顺手依赖 module.exports.directUploads 这种隐式约定。 */
+module.exports.sweepQuotaReservations = sweepQuotaReservations;
+module.exports._quotaInternals = { pendingQuota, directUploads, directMparts };
