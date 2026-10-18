@@ -2455,6 +2455,14 @@ async function start() {
 
   const boot = await bootstrap();
 
+  /* 横幅里的存储状态要反映运行时结论：页面上配好的实例，.env 里是空的。 */
+  const activeOss = ossconfig.active();
+  boot.ossText = activeOss
+    ? `${activeOss.cfg.bucket} @ ${activeOss.cfg.region}` +
+      `（${activeOss.source === 'ui' ? '页面配置' : '.env'}）`
+    : '未配置（页面能开，上传和下载会失败）';
+  boot.ossPrefix = activeOss ? activeOss.cfg.prefix + '/' : '';
+
   return new Promise(resolve => {
     const server = app.listen(CFG.port, () => {
       console.log('');
